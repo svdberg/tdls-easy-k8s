@@ -1,0 +1,100 @@
+package provider
+
+import (
+	"testing"
+
+	"github.com/user/tdls-easy-k8s/internal/config"
+)
+
+func TestAWSProvider_Name(t *testing.T) {
+	p := NewAWSProvider()
+	if p.Name() != "aws" {
+		t.Errorf("expected 'aws', got %q", p.Name())
+	}
+}
+
+func TestAWSProvider_ValidateConfig_Valid(t *testing.T) {
+	p := NewAWSProvider()
+	cfg := &config.ClusterConfig{
+		Provider: config.ProviderConfig{
+			Type:   "aws",
+			Region: "us-east-1",
+		},
+	}
+	if err := p.ValidateConfig(cfg); err != nil {
+		t.Errorf("expected valid config to pass, got: %v", err)
+	}
+}
+
+func TestAWSProvider_ValidateConfig_WrongType(t *testing.T) {
+	p := NewAWSProvider()
+	cfg := &config.ClusterConfig{
+		Provider: config.ProviderConfig{
+			Type:   "vsphere",
+			Region: "us-east-1",
+		},
+	}
+	if err := p.ValidateConfig(cfg); err == nil {
+		t.Error("expected error for wrong provider type")
+	}
+}
+
+func TestAWSProvider_ValidateConfig_MissingRegion(t *testing.T) {
+	p := NewAWSProvider()
+	cfg := &config.ClusterConfig{
+		Provider: config.ProviderConfig{
+			Type: "aws",
+		},
+	}
+	if err := p.ValidateConfig(cfg); err == nil {
+		t.Error("expected error for missing region")
+	}
+}
+
+func TestAWSProvider_CreateInfrastructure_NotImplemented(t *testing.T) {
+	p := NewAWSProvider()
+	cfg := &config.ClusterConfig{
+		Provider: config.ProviderConfig{Type: "aws", Region: "us-east-1"},
+		Nodes: config.NodesConfig{
+			ControlPlane: config.NodeGroupConfig{Count: 1},
+			Workers:      config.NodeGroupConfig{Count: 1},
+		},
+	}
+	err := p.CreateInfrastructure(cfg)
+	if err == nil {
+		t.Error("expected not-implemented error")
+	}
+}
+
+func TestAWSProvider_DestroyInfrastructure_NotImplemented(t *testing.T) {
+	p := NewAWSProvider()
+	cfg := &config.ClusterConfig{}
+	err := p.DestroyInfrastructure(cfg)
+	if err == nil {
+		t.Error("expected not-implemented error")
+	}
+}
+
+func TestAWSProvider_GetKubeconfig_NotImplemented(t *testing.T) {
+	p := NewAWSProvider()
+	cfg := &config.ClusterConfig{}
+	_, err := p.GetKubeconfig(cfg)
+	if err == nil {
+		t.Error("expected not-implemented error")
+	}
+}
+
+func TestAWSProvider_GetStatus_NotImplemented(t *testing.T) {
+	p := NewAWSProvider()
+	cfg := &config.ClusterConfig{}
+	status, err := p.GetStatus(cfg)
+	if err == nil {
+		t.Error("expected not-implemented error")
+	}
+	if status != "unknown" {
+		t.Errorf("expected status 'unknown', got %q", status)
+	}
+}
+
+// Verify AWSProvider satisfies the Provider interface at compile time.
+var _ Provider = (*AWSProvider)(nil)
