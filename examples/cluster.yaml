@@ -1,0 +1,34 @@
+name: production
+provider:
+  type: aws
+  region: us-east-1
+  vpc:
+    cidr: 10.0.0.0/16
+
+kubernetes:
+  version: "1.30"
+  distribution: rke2
+
+nodes:
+  controlPlane:
+    count: 3
+    instanceType: t3.medium
+  workers:
+    count: 3
+    instanceType: t3.large
+
+gitops:
+  enabled: true
+  repository: github.com/user/cluster-gitops
+  branch: main
+
+components:
+  traefik:
+    enabled: true
+    version: "26.x"
+  vault:
+    enabled: true
+    mode: external  # or "deploy"
+    address: https://vault.example.com
+  externalSecrets:
+    enabled: true
