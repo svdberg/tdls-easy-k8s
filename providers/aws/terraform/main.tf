@@ -94,7 +94,7 @@ module "storage" {
   etcd_volume_type       = var.etcd_volume_type
   etcd_volume_iops       = var.etcd_volume_iops
   etcd_volume_throughput = var.etcd_volume_throughput
-  kms_key_id             = var.enable_encryption ? module.iam.kms_key_id : null
+  kms_key_id             = var.enable_encryption ? module.iam.kms_key_arn : null
 
   tags = local.common_tags
 
@@ -128,7 +128,7 @@ module "control_plane" {
   state_bucket              = var.state_bucket
   nlb_dns_name              = "" # Not needed during instance creation
   enable_encryption         = var.enable_encryption
-  kms_key_id                = var.enable_encryption ? module.iam.kms_key_id : null
+  kms_key_id                = var.enable_encryption ? module.iam.kms_key_arn : null
 
   tags = local.common_tags
 
@@ -181,7 +181,7 @@ module "worker" {
   api_endpoint              = local.api_endpoint
   enable_spot_instances     = var.enable_spot_instances
   enable_encryption         = var.enable_encryption
-  kms_key_id                = var.enable_encryption ? module.iam.kms_key_id : null
+  kms_key_id                = var.enable_encryption ? module.iam.kms_key_arn : null
 
   tags = local.common_tags
 
