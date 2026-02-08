@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/user/tdls-easy-k8s/internal/config"
 )
@@ -67,6 +68,11 @@ func (p *AWSProvider) CreateInfrastructure(cfg *config.ClusterConfig) error {
 	fmt.Println("\n[OpenTofu] Initializing...")
 	if err := p.runTofu("init"); err != nil {
 		return fmt.Errorf("terraform init failed: %w", err)
+	}
+
+	// 4.5. Fix provider executable permissions
+	if err := p.fixProviderPermissions(); err != nil {
+		fmt.Printf("Warning: failed to fix provider permissions: %v\n", err)
 	}
 
 	// 5. Run tofu plan
@@ -195,6 +201,14 @@ func (p *AWSProvider) copyTerraformModules() error {
 			return err
 		}
 
+		// Skip .terraform directory and other temporary files
+		if d.IsDir() && (d.Name() == ".terraform" || d.Name() == ".git") {
+			return filepath.SkipDir
+		}
+		if d.Name() == ".terraform.lock.hcl" || d.Name() == "terraform.tfstate" || d.Name() == "terraform.tfstate.backup" {
+			return nil
+		}
+
 		targetPath := filepath.Join(p.workDir, relPath)
 
 		if d.IsDir() {
@@ -268,4 +282,25 @@ func (p *AWSProvider) getRKE2Version(k8sVersion string) string {
 func (p *AWSProvider) getStateBucket(cfg *config.ClusterConfig) string {
 	// TODO: Allow user to specify bucket or create one
 	return fmt.Sprintf("tdls-k8s-%s-state", cfg.Name)
+}
+
+// fixProviderPermissions fixes execute permissions on OpenTofu provider binaries
+func (p *AWSProvider) fixProviderPermissions() error {
+	providersDir := filepath.Join(p.workDir, ".terraform", "providers")
+
+	return filepath.WalkDir(providersDir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil // Ignore errors, continue walking
+		}
+
+		// Fix permissions on provider executables
+		basename := filepath.Base(path)
+		if !d.IsDir() && strings.HasPrefix(basename, "terraform-provider-") {
+			if err := os.Chmod(path, 0755); err != nil {
+				return nil // Ignore permission errors
+			}
+		}
+
+		return nil
+	})
 }

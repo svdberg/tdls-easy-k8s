@@ -1,5 +1,12 @@
 package config
 
+import (
+	"fmt"
+	"os"
+
+	"gopkg.in/yaml.v3"
+)
+
 // ClusterConfig represents the complete cluster configuration
 type ClusterConfig struct {
 	Name       string           `yaml:"name"`
@@ -107,4 +114,19 @@ type ConfigError struct {
 
 func (e *ConfigError) Error() string {
 	return e.Message
+}
+
+// LoadConfig loads cluster configuration from a YAML file
+func LoadConfig(path string) (*ClusterConfig, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read config file: %w", err)
+	}
+
+	var cfg ClusterConfig
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return nil, fmt.Errorf("failed to parse config file: %w", err)
+	}
+
+	return &cfg, nil
 }

@@ -4,10 +4,12 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
+	"github.com/user/tdls-easy-k8s/internal/config"
+	"github.com/user/tdls-easy-k8s/internal/provider"
 )
 
 var (
-	provider     string
+	providerType string
 	region       string
 	clusterName  string
 	nodes        int
@@ -32,13 +34,11 @@ This command will create the necessary infrastructure and install Kubernetes.`,
 func init() {
 	rootCmd.AddCommand(initCmd)
 
-	initCmd.Flags().StringVar(&provider, "provider", "aws", "Cloud provider (aws, vsphere)")
+	initCmd.Flags().StringVar(&providerType, "provider", "aws", "Cloud provider (aws, vsphere)")
 	initCmd.Flags().StringVar(&region, "region", "us-east-1", "Cloud provider region")
-	initCmd.Flags().StringVar(&clusterName, "name", "", "Cluster name (required)")
+	initCmd.Flags().StringVar(&clusterName, "name", "", "Cluster name")
 	initCmd.Flags().IntVar(&nodes, "nodes", 3, "Number of worker nodes")
 	initCmd.Flags().BoolVar(&generateCfg, "generate-config", false, "Generate a sample config file")
-
-	initCmd.MarkFlagRequired("name")
 }
 
 func generateConfig(cmd *cobra.Command) error {
@@ -84,23 +84,84 @@ func generateConfig(cmd *cobra.Command) error {
 }
 
 func initCluster(cmd *cobra.Command) error {
-	if verbose {
-		fmt.Printf("Initializing cluster '%s' on %s in %s\n", clusterName, provider, region)
-		fmt.Printf("Worker nodes: %d\n", nodes)
+	var cfg *config.ClusterConfig
+	var err error
+
+	// Load configuration from file or flags
+	if cfgFile != "" {
+		// Load from config file
+		cfg, err = config.LoadConfig(cfgFile)
+		if err != nil {
+			return fmt.Errorf("failed to load config: %w", err)
+		}
+
+		if verbose {
+			fmt.Printf("✓ Loaded configuration from %s\n", cfgFile)
+		}
+	} else {
+		// Use flags (require name when not using config file)
+		if clusterName == "" {
+			return fmt.Errorf("cluster name is required when not using a config file")
+		}
+
+		// Create config from flags (basic config)
+		cfg = &config.ClusterConfig{
+			Name: clusterName,
+			Provider: config.ProviderConfig{
+				Type:   providerType,
+				Region: region,
+				VPC: config.VPCConfig{
+					CIDR: "10.0.0.0/16",
+				},
+			},
+			Kubernetes: config.KubernetesConfig{
+				Version:      "1.30",
+				Distribution: "rke2",
+			},
+			Nodes: config.NodesConfig{
+				ControlPlane: config.NodeGroupConfig{
+					Count:        3,
+					InstanceType: "t3.medium",
+				},
+				Workers: config.NodeGroupConfig{
+					Count:        nodes,
+					InstanceType: "t3.large",
+				},
+			},
+		}
 	}
 
-	fmt.Println("[STUB] Cluster initialization not yet implemented")
-	fmt.Println("Configuration:")
-	fmt.Printf("  Name: %s\n", clusterName)
-	fmt.Printf("  Provider: %s\n", provider)
-	fmt.Printf("  Region: %s\n", region)
-	fmt.Printf("  Nodes: %d\n", nodes)
+	// Validate configuration
+	if err := cfg.Validate(); err != nil {
+		return fmt.Errorf("invalid configuration: %w", err)
+	}
 
-	fmt.Println("\nNext steps:")
-	fmt.Println("  1. Provider infrastructure setup (Terraform)")
-	fmt.Println("  2. Kubernetes installation (RKE2/K3s)")
-	fmt.Println("  3. Core components (Traefik, CSI drivers)")
-	fmt.Println("  4. GitOps setup (Flux)")
+	fmt.Printf("\n🚀 Initializing cluster '%s'\n", cfg.Name)
+	fmt.Printf("   Provider: %s\n", cfg.Provider.Type)
+	fmt.Printf("   Region: %s\n", cfg.Provider.Region)
+	fmt.Printf("   Control Plane: %d nodes\n", cfg.Nodes.ControlPlane.Count)
+	fmt.Printf("   Workers: %d nodes\n\n", cfg.Nodes.Workers.Count)
+
+	// Get the appropriate provider
+	var p provider.Provider
+	switch cfg.Provider.Type {
+	case "aws":
+		p = provider.NewAWSProvider()
+	case "vsphere":
+		return fmt.Errorf("vSphere provider not yet implemented")
+	default:
+		return fmt.Errorf("unsupported provider: %s", cfg.Provider.Type)
+	}
+
+	// Validate provider configuration
+	if err := p.ValidateConfig(cfg); err != nil {
+		return fmt.Errorf("provider validation failed: %w", err)
+	}
+
+	// Create infrastructure
+	if err := p.CreateInfrastructure(cfg); err != nil {
+		return fmt.Errorf("infrastructure creation failed: %w", err)
+	}
 
 	return nil
 }
