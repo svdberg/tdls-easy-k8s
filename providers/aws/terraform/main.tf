@@ -70,12 +70,12 @@ module "security" {
 module "iam" {
   source = "./modules/iam"
 
-  cluster_name              = var.cluster_name
-  state_bucket              = var.state_bucket
-  enable_encryption         = var.enable_encryption
-  kms_key_deletion_window   = var.kms_key_deletion_window
-  enable_session_manager    = var.enable_session_manager
-  enable_cloudwatch_logs    = var.enable_cloudwatch_logs
+  cluster_name            = var.cluster_name
+  state_bucket            = var.state_bucket
+  enable_encryption       = var.enable_encryption
+  kms_key_deletion_window = var.kms_key_deletion_window
+  enable_session_manager  = var.enable_session_manager
+  enable_cloudwatch_logs  = var.enable_cloudwatch_logs
 
   tags = local.common_tags
 }
@@ -102,6 +102,45 @@ module "storage" {
 }
 
 # =============================================================================
+# Control Plane Module
+# =============================================================================
+
+module "control_plane" {
+  source = "./modules/compute/control-plane"
+
+  cluster_name              = var.cluster_name
+  control_plane_count       = var.control_plane_count
+  instance_type             = var.control_plane_instance_type
+  ami_id                    = local.ami_id
+  subnet_ids                = module.networking.public_subnet_ids
+  security_group_ids        = [module.security.control_plane_sg_id]
+  iam_instance_profile_name = module.iam.control_plane_instance_profile_name
+  ssh_key_name              = var.ssh_key_name
+  root_volume_size          = var.control_plane_root_volume_size
+  root_volume_type          = var.control_plane_root_volume_type
+  etcd_volume_ids           = module.storage.etcd_volume_ids
+  cluster_token             = local.cluster_token
+  rke2_version              = var.rke2_version
+  cni_plugin                = var.cni_plugin
+  cluster_cidr              = var.cluster_cidr
+  service_cidr              = var.service_cidr
+  cluster_dns               = var.cluster_dns
+  state_bucket              = var.state_bucket
+  nlb_dns_name              = "" # Not needed during instance creation
+  enable_encryption         = var.enable_encryption
+  kms_key_id                = var.enable_encryption ? module.iam.kms_key_id : null
+
+  tags = local.common_tags
+
+  depends_on = [
+    module.networking,
+    module.security,
+    module.iam,
+    module.storage
+  ]
+}
+
+# =============================================================================
 # Load Balancer Module
 # =============================================================================
 
@@ -118,45 +157,6 @@ module "loadbalancer" {
   tags = local.common_tags
 
   depends_on = [module.control_plane]
-}
-
-# =============================================================================
-# Control Plane Module
-# =============================================================================
-
-module "control_plane" {
-  source = "./modules/compute/control-plane"
-
-  cluster_name               = var.cluster_name
-  control_plane_count        = var.control_plane_count
-  instance_type              = var.control_plane_instance_type
-  ami_id                     = local.ami_id
-  subnet_ids                 = module.networking.public_subnet_ids
-  security_group_ids         = [module.security.control_plane_sg_id]
-  iam_instance_profile_name  = module.iam.control_plane_instance_profile_name
-  ssh_key_name               = var.ssh_key_name
-  root_volume_size           = var.control_plane_root_volume_size
-  root_volume_type           = var.control_plane_root_volume_type
-  etcd_volume_ids            = module.storage.etcd_volume_ids
-  cluster_token              = local.cluster_token
-  rke2_version               = var.rke2_version
-  cni_plugin                 = var.cni_plugin
-  cluster_cidr               = var.cluster_cidr
-  service_cidr               = var.service_cidr
-  cluster_dns                = var.cluster_dns
-  state_bucket               = var.state_bucket
-  nlb_dns_name               = var.enable_nlb ? module.loadbalancer[0].nlb_dns_name : ""
-  enable_encryption          = var.enable_encryption
-  kms_key_id                 = var.enable_encryption ? module.iam.kms_key_id : null
-
-  tags = local.common_tags
-
-  depends_on = [
-    module.networking,
-    module.security,
-    module.iam,
-    module.storage
-  ]
 }
 
 # =============================================================================

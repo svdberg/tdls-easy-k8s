@@ -112,16 +112,17 @@ echo "[$(date)] Configuring RKE2..."
 
 mkdir -p /etc/rancher/rke2
 
-# Determine TLS SANs
-TLS_SANS=""
-if [ -n "$NLB_DNS_NAME" ]; then
-  TLS_SANS="  - $NLB_DNS_NAME"
-fi
-
 # Get instance private IP
 PRIVATE_IP=$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4)
-TLS_SANS="$TLS_SANS
-  - $PRIVATE_IP"
+
+# Build TLS SANs list - always include private IP
+TLS_SANS="  - $PRIVATE_IP"
+
+# Add NLB DNS if available (will be empty during initial creation)
+if [ -n "$NLB_DNS_NAME" ]; then
+  TLS_SANS="$TLS_SANS
+  - $NLB_DNS_NAME"
+fi
 
 # Configure based on whether this is the first node
 if [ "$IS_FIRST_NODE" = "true" ]; then
@@ -199,19 +200,15 @@ done
 if [ "$IS_FIRST_NODE" = "true" ]; then
   echo "[$(date)] Uploading kubeconfig to S3..."
 
-  # Update server URL in kubeconfig
+  # Update server URL in kubeconfig to use this node's IP
+  # NLB will be created after instances exist, kubeconfig can be updated later if needed
   cp /etc/rancher/rke2/rke2.yaml /tmp/rke2.yaml
-
-  if [ -n "$NLB_DNS_NAME" ]; then
-    sed -i "s/127.0.0.1/$NLB_DNS_NAME/g" /tmp/rke2.yaml
-  else
-    sed -i "s/127.0.0.1/$PRIVATE_IP/g" /tmp/rke2.yaml
-  fi
+  sed -i "s/127.0.0.1/$PRIVATE_IP/g" /tmp/rke2.yaml
 
   aws s3 cp /tmp/rke2.yaml "s3://$STATE_BUCKET/kubeconfig/$CLUSTER_NAME/rke2.yaml"
   rm /tmp/rke2.yaml
 
-  echo "[$(date)] Kubeconfig uploaded successfully"
+  echo "[$(date)] Kubeconfig uploaded successfully (using $PRIVATE_IP as API endpoint)"
 fi
 
 # =============================================================================

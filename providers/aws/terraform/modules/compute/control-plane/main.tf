@@ -28,18 +28,18 @@ resource "aws_instance" "control_plane" {
   }
 
   user_data = base64encode(templatefile("${path.module}/user-data.tpl", {
-    cluster_name   = var.cluster_name
-    cluster_token  = var.cluster_token
-    rke2_version   = var.rke2_version
-    cni_plugin     = var.cni_plugin
-    cluster_cidr   = var.cluster_cidr
-    service_cidr   = var.service_cidr
-    cluster_dns    = var.cluster_dns
-    state_bucket   = var.state_bucket
-    nlb_dns_name   = var.nlb_dns_name
-    is_first_node  = count.index == 0 ? "true" : "false"
-    first_node_ip  = count.index == 0 ? "" : aws_instance.control_plane[0].private_ip
-    node_index     = count.index
+    cluster_name  = var.cluster_name
+    cluster_token = var.cluster_token
+    rke2_version  = var.rke2_version
+    cni_plugin    = var.cni_plugin
+    cluster_cidr  = var.cluster_cidr
+    service_cidr  = var.service_cidr
+    cluster_dns   = var.cluster_dns
+    state_bucket  = var.state_bucket
+    nlb_dns_name  = var.nlb_dns_name
+    is_first_node = count.index == 0 ? "true" : "false"
+    first_node_ip = count.index == 0 ? "" : aws_instance.control_plane[0].private_ip
+    node_index    = count.index
   }))
 
   metadata_options {
@@ -56,11 +56,6 @@ resource "aws_instance" "control_plane" {
     },
     var.tags
   )
-
-  # Ensure instances are created one at a time for proper cluster formation
-  depends_on = [
-    aws_volume_attachment.etcd
-  ]
 
   lifecycle {
     ignore_changes = [ami]
