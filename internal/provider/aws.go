@@ -104,16 +104,17 @@ func (p *AWSProvider) CreateInfrastructure(cfg *config.ClusterConfig) error {
 
 	fmt.Println("\n📝 Next steps:")
 	fmt.Println("  1. Wait for RKE2 to complete installation (~5 minutes)")
-	fmt.Println("  2. Download kubeconfig:")
-	fmt.Printf("     aws s3 cp s3://%s/kubeconfig/%s/rke2.yaml ./kubeconfig\n", p.getStateBucket(cfg), cfg.Name)
-	fmt.Println("  3. Update kubeconfig to use NLB endpoint:")
-	nlbDNS, _ := p.getTerraformOutput("nlb_dns_name")
-	if nlbDNS != "" {
-		fmt.Printf("     sed -i 's/10\\.0\\.[0-9]*\\.[0-9]*/%s/g' ./kubeconfig\n", nlbDNS)
-	}
-	fmt.Println("  4. Test cluster:")
-	fmt.Println("     export KUBECONFIG=./kubeconfig")
-	fmt.Println("     kubectl get nodes")
+	fmt.Println("  2. Download and configure kubeconfig:")
+	fmt.Printf("     tdls-easy-k8s kubeconfig --cluster=%s\n", cfg.Name)
+	fmt.Println()
+	fmt.Println("  3. Verify cluster:")
+	fmt.Printf("     tdls-easy-k8s status --cluster=%s\n", cfg.Name)
+	fmt.Println()
+	fmt.Println("  4. (Optional) Validate cluster health:")
+	fmt.Printf("     tdls-easy-k8s validate --cluster=%s\n", cfg.Name)
+	fmt.Println()
+	fmt.Println("Or merge into your kubectl config:")
+	fmt.Printf("  tdls-easy-k8s kubeconfig --cluster=%s --merge --set-context\n", cfg.Name)
 
 	return nil
 }
@@ -140,9 +141,19 @@ func (p *AWSProvider) DestroyInfrastructure(cfg *config.ClusterConfig) error {
 
 // GetKubeconfig retrieves the kubeconfig for the cluster
 func (p *AWSProvider) GetKubeconfig(cfg *config.ClusterConfig) (string, error) {
-	// TODO: Implement downloading kubeconfig from S3
-	s3Path := fmt.Sprintf("s3://%s/kubeconfig/%s/rke2.yaml", p.getStateBucket(cfg), cfg.Name)
-	return s3Path, nil
+	// Setup working directory to get Terraform outputs
+	if err := p.setupWorkingDirectory(cfg); err != nil {
+		return "", fmt.Errorf("failed to setup working directory: %w", err)
+	}
+
+	// Download and prepare kubeconfig
+	kubeconfigPath, err := p.downloadKubeconfig(cfg)
+	if err != nil {
+		return "", fmt.Errorf("failed to download kubeconfig: %w", err)
+	}
+
+	// Note: The downloadKubeconfig function already updates the server URL to use NLB
+	return kubeconfigPath, nil
 }
 
 // GetStatus returns the current status of the AWS infrastructure

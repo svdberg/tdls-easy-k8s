@@ -10,8 +10,11 @@ Easy Kubernetes cluster management for non-expert engineers.
 
 - **Production-Ready AWS Infrastructure**: Multi-AZ deployment with HA, private/public subnet split, Network Load Balancer
 - **Automated RKE2 Installation**: Cloud-init scripts handle complete cluster bootstrap
+- **Automatic TLS Certificate Management**: Two-phase deployment ensures NLB DNS is included in API server certificates
 - **OpenTofu-Based**: Uses open-source OpenTofu for infrastructure as code
 - **Security-First**: Encrypted EBS volumes, strict security groups, IAM least privilege, AWS Session Manager
+- **User-Friendly Validation**: Built-in `status` and `validate` commands for non-expert engineers
+- **Automated Kubeconfig Management**: One command to download and configure cluster access
 - **Cost-Optimized**: Options for single NAT gateway, spot instances, VPC endpoints
 - **GitOps Ready**: Built-in Flux integration for GitOps workflows
 - **Simple Configuration**: YAML-based configuration files
@@ -152,23 +155,25 @@ Key settings to customize:
 
 ```bash
 # This will:
+# - Create S3 bucket for kubeconfig storage
 # - Create OpenTofu working directory (~/.tdls-k8s/clusters/<name>/terraform)
 # - Generate terraform.tfvars.json from your config
 # - Run: tofu init, plan, and apply
 # - Deploy AWS infrastructure (VPC, EC2, NLB, etc.)
 # - Install RKE2 automatically via cloud-init
+# - Update TLS certificates with NLB DNS (Phase 2)
 # - Upload kubeconfig to S3
 
 ./bin/tdls-easy-k8s init --config=my-cluster.yaml
 ```
 
-This typically takes **10-15 minutes** to complete.
+This typically takes **15-20 minutes** to complete (including TLS certificate updates).
 
 ### 4. Access Your Cluster
 
 ```bash
-# Download kubeconfig from S3
-aws s3 cp s3://tdls-k8s-<cluster-name>-state/kubeconfig/<cluster-name>/rke2.yaml ./kubeconfig
+# Download and configure kubeconfig (automatically updates to use NLB endpoint)
+./bin/tdls-easy-k8s kubeconfig --cluster=production
 
 # Use the cluster
 export KUBECONFIG=./kubeconfig
@@ -176,13 +181,30 @@ kubectl get nodes
 kubectl get pods -A
 ```
 
-### 5. (Optional) Setup GitOps
+**Or merge into your kubectl config:**
+```bash
+# Merge and set as current context
+./bin/tdls-easy-k8s kubeconfig --cluster=production --merge --set-context
+kubectl get nodes  # Just works!
+```
+
+### 5. Verify Cluster Health
+
+```bash
+# Quick status check
+./bin/tdls-easy-k8s status --cluster=production
+
+# Comprehensive validation
+./bin/tdls-easy-k8s validate --cluster=production
+```
+
+### 6. (Optional) Setup GitOps
 
 ```bash
 tdls-easy-k8s gitops setup --repo=github.com/youruser/cluster-gitops
 ```
 
-### 6. (Optional) Add Applications
+### 7. (Optional) Add Applications
 
 ```bash
 tdls-easy-k8s app add myapp --chart=mycompany/myapp --namespace=production
@@ -295,6 +317,98 @@ Add a new application to the cluster via GitOps.
 
 ```bash
 tdls-easy-k8s app add myapp --chart=mycompany/myapp --namespace=production
+```
+
+### `tdls-easy-k8s kubeconfig`
+
+Download and configure kubeconfig for cluster access.
+
+```bash
+# Download to ./kubeconfig
+tdls-easy-k8s kubeconfig --cluster=production
+
+# Download to specific location
+tdls-easy-k8s kubeconfig --cluster=production --output=~/.kube/prod-config
+
+# Merge into ~/.kube/config and set as current context
+tdls-easy-k8s kubeconfig --cluster=production --merge --set-context
+```
+
+### `tdls-easy-k8s status`
+
+Show cluster status and health overview.
+
+```bash
+# Quick status check
+tdls-easy-k8s status --cluster=production
+
+# Watch mode (updates every 5 seconds)
+tdls-easy-k8s status --cluster=production --watch
+```
+
+**Example Output:**
+```
+Cluster: production
+Provider: aws
+Region: us-east-1
+
+API Endpoint: production-nlb-xxx.elb.us-east-1.amazonaws.com
+
+Nodes:
+  ✓ Control Plane: 3/3 ready
+  ✓ Workers: 3/3 ready
+
+System Components:
+  ✓ coredns            2/2 running
+  ✓ cilium             6/6 running
+  ✓ kube-apiserver     3/3 running
+  ✓ etcd               3/3 running
+
+Status: ✓ Cluster is ready
+Age: 45 minutes
+```
+
+### `tdls-easy-k8s validate`
+
+Run comprehensive validation checks on cluster health.
+
+```bash
+# Full validation
+tdls-easy-k8s validate --cluster=production
+
+# Quick validation (skips optional checks)
+tdls-easy-k8s validate --cluster=production --quick
+```
+
+**Example Output:**
+```
+Validating cluster: production
+═══════════════════════════════════════════
+Checking API server accessibility...
+  ✓ API server is accessible
+
+Checking Node readiness...
+  ✓ All 6 nodes are ready
+
+Checking System pods...
+  ✓ All 12 system pods are running
+
+Checking etcd health...
+  ✓ etcd cluster healthy (3 members)
+
+Checking DNS resolution...
+  ✓ DNS is working (2 pods running)
+
+Checking Pod networking...
+  ✓ Pod networking is operational (6 Cilium pods running)
+
+═══════════════════════════════════════════
+Validation Summary (8 seconds elapsed)
+═══════════════════════════════════════════
+Passed:   6
+
+✓ Validation: PASSED
+Cluster is healthy and ready for workload deployment!
 ```
 
 ### `tdls-easy-k8s version`
@@ -474,19 +588,27 @@ tofu output
 - [x] AWS Session Manager integration
 - [x] KMS encryption for EBS volumes
 - [x] VPC endpoints for cost optimization
+- [x] S3 bucket auto-creation for kubeconfig storage
+- [x] Two-phase TLS certificate management (NLB DNS in API certificates)
+- [x] **Kubeconfig automation** (`kubeconfig` command with kubectl integration)
+- [x] **Cluster status monitoring** (`status` command for quick health checks)
+- [x] **Comprehensive validation** (`validate` command with 7 health checks)
 
 ### In Progress 🚧
-- [ ] S3 state backend configuration
-- [ ] Kubeconfig download automation
 - [ ] Flux GitOps setup
 - [ ] GitOps template generation
+- [ ] Cluster destroy command
 
 ### Planned 📋
+- [ ] S3 backend for OpenTofu state (with DynamoDB locking)
+- [ ] Cluster upgrade automation
+- [ ] Worker node scaling command
+- [ ] Component logs viewing (`logs` command)
 - [ ] vSphere provider implementation
 - [ ] K3s support (in addition to RKE2)
 - [ ] Auto-scaling worker groups
-- [ ] Cluster upgrade automation
 - [ ] Backup and restore functionality
+- [ ] Cost estimation before deployment
 - [ ] Unit tests
 - [ ] Integration tests
 - [ ] CI/CD pipeline
