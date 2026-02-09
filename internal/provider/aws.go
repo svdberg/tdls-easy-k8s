@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/user/tdls-easy-k8s/internal/config"
 )
@@ -64,6 +65,11 @@ func (p *AWSProvider) CreateInfrastructure(cfg *config.ClusterConfig) error {
 		return fmt.Errorf("failed to generate terraform vars: %w", err)
 	}
 
+	// 3.5. Create S3 bucket for kubeconfig storage
+	if err := p.createS3Bucket(cfg); err != nil {
+		return fmt.Errorf("failed to create S3 bucket: %w", err)
+	}
+
 	// 4. Run tofu init
 	fmt.Println("\n[OpenTofu] Initializing...")
 	if err := p.runTofu("init"); err != nil {
@@ -81,18 +87,31 @@ func (p *AWSProvider) CreateInfrastructure(cfg *config.ClusterConfig) error {
 		return fmt.Errorf("terraform plan failed: %w", err)
 	}
 
-	// 6. Run tofu apply
-	fmt.Println("\n[OpenTofu] Applying infrastructure changes...")
+	// 6. Run tofu apply (Phase 1)
+	fmt.Println("\n[OpenTofu] Applying infrastructure changes (Phase 1)...")
 	fmt.Println("This may take 10-15 minutes...")
 	if err := p.runTofu("apply", "tfplan"); err != nil {
 		return fmt.Errorf("terraform apply failed: %w", err)
 	}
 
 	fmt.Println("\n✅ Infrastructure created successfully!")
+
+	// 7. Phase 2: Update TLS certificates with NLB DNS (if NLB is enabled)
+	if err := p.updateTLSCertificatesWithNLB(cfg); err != nil {
+		fmt.Printf("\n⚠️  Warning: Failed to update TLS certificates with NLB DNS: %v\n", err)
+		fmt.Println("You can manually update certificates later if needed.")
+	}
+
 	fmt.Println("\n📝 Next steps:")
-	fmt.Println("  1. Download kubeconfig:")
+	fmt.Println("  1. Wait for RKE2 to complete installation (~5 minutes)")
+	fmt.Println("  2. Download kubeconfig:")
 	fmt.Printf("     aws s3 cp s3://%s/kubeconfig/%s/rke2.yaml ./kubeconfig\n", p.getStateBucket(cfg), cfg.Name)
-	fmt.Println("  2. Test cluster:")
+	fmt.Println("  3. Update kubeconfig to use NLB endpoint:")
+	nlbDNS, _ := p.getTerraformOutput("nlb_dns_name")
+	if nlbDNS != "" {
+		fmt.Printf("     sed -i 's/10\\.0\\.[0-9]*\\.[0-9]*/%s/g' ./kubeconfig\n", nlbDNS)
+	}
+	fmt.Println("  4. Test cluster:")
 	fmt.Println("     export KUBECONFIG=./kubeconfig")
 	fmt.Println("     kubectl get nodes")
 
@@ -303,4 +322,197 @@ func (p *AWSProvider) fixProviderPermissions() error {
 
 		return nil
 	})
+}
+
+// createS3Bucket creates the S3 bucket for cluster state if it doesn't exist
+func (p *AWSProvider) createS3Bucket(cfg *config.ClusterConfig) error {
+	bucketName := p.getStateBucket(cfg)
+	region := cfg.Provider.Region
+
+	fmt.Printf("[S3] Ensuring bucket exists: %s\n", bucketName)
+
+	// Check if bucket exists
+	checkCmd := exec.Command("aws", "s3", "ls", fmt.Sprintf("s3://%s", bucketName), "--region", region)
+	if err := checkCmd.Run(); err == nil {
+		fmt.Printf("[S3] Bucket already exists: %s\n", bucketName)
+		return nil
+	}
+
+	// Create bucket
+	fmt.Printf("[S3] Creating bucket: %s\n", bucketName)
+	createCmd := exec.Command("aws", "s3", "mb", fmt.Sprintf("s3://%s", bucketName), "--region", region)
+	createCmd.Stdout = os.Stdout
+	createCmd.Stderr = os.Stderr
+	if err := createCmd.Run(); err != nil {
+		return fmt.Errorf("failed to create S3 bucket: %w", err)
+	}
+
+	// Enable encryption
+	fmt.Printf("[S3] Enabling encryption on bucket: %s\n", bucketName)
+	encryptCmd := exec.Command("aws", "s3api", "put-bucket-encryption",
+		"--bucket", bucketName,
+		"--server-side-encryption-configuration", `{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"AES256"},"BucketKeyEnabled":true}]}`,
+		"--region", region)
+	encryptCmd.Stdout = os.Stdout
+	encryptCmd.Stderr = os.Stderr
+	if err := encryptCmd.Run(); err != nil {
+		fmt.Printf("Warning: failed to enable encryption: %v\n", err)
+	}
+
+	// Enable versioning
+	fmt.Printf("[S3] Enabling versioning on bucket: %s\n", bucketName)
+	versionCmd := exec.Command("aws", "s3api", "put-bucket-versioning",
+		"--bucket", bucketName,
+		"--versioning-configuration", "Status=Enabled",
+		"--region", region)
+	versionCmd.Stdout = os.Stdout
+	versionCmd.Stderr = os.Stderr
+	if err := versionCmd.Run(); err != nil {
+		fmt.Printf("Warning: failed to enable versioning: %v\n", err)
+	}
+
+	fmt.Printf("[S3] Bucket ready: %s\n", bucketName)
+	return nil
+}
+
+// getTerraformOutput retrieves a specific output value from Terraform state
+func (p *AWSProvider) getTerraformOutput(outputName string) (string, error) {
+	cmd := exec.Command("tofu", "output", "-raw", outputName)
+	cmd.Dir = p.workDir
+	output, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("failed to get output %s: %w", outputName, err)
+	}
+	return strings.TrimSpace(string(output)), nil
+}
+
+// updateTLSCertificatesWithNLB updates RKE2 TLS certificates to include NLB DNS name
+func (p *AWSProvider) updateTLSCertificatesWithNLB(cfg *config.ClusterConfig) error {
+	fmt.Println("\n[Phase 2] Updating TLS certificates with NLB DNS...")
+
+	// Get NLB DNS name from Terraform outputs
+	nlbDNS, err := p.getTerraformOutput("nlb_dns_name")
+	if err != nil || nlbDNS == "" {
+		return fmt.Errorf("NLB not enabled or DNS not available: %w", err)
+	}
+
+	fmt.Printf("[Phase 2] NLB DNS: %s\n", nlbDNS)
+
+	// Get control plane instance IDs
+	controlPlaneIDs, err := p.getTerraformOutput("control_plane_instance_ids")
+	if err != nil {
+		return fmt.Errorf("failed to get control plane instance IDs: %w", err)
+	}
+
+	// Parse instance IDs (JSON array format)
+	var instanceIDs []string
+	if err := json.Unmarshal([]byte(controlPlaneIDs), &instanceIDs); err != nil {
+		return fmt.Errorf("failed to parse instance IDs: %w", err)
+	}
+
+	if len(instanceIDs) == 0 {
+		return fmt.Errorf("no control plane instances found")
+	}
+
+	fmt.Printf("[Phase 2] Updating %d control plane nodes...\n", len(instanceIDs))
+
+	// Wait for instances to be ready for SSM
+	fmt.Println("[Phase 2] Waiting for SSM agent to be ready (30s)...")
+	cmd := exec.Command("sleep", "30")
+	cmd.Run()
+
+	// Update each control plane node
+	for i, instanceID := range instanceIDs {
+		fmt.Printf("[Phase 2] Updating node %d/%d: %s\n", i+1, len(instanceIDs), instanceID)
+		if err := p.updateNodeTLSCert(instanceID, nlbDNS, cfg.Provider.Region); err != nil {
+			fmt.Printf("Warning: Failed to update node %s: %v\n", instanceID, err)
+			continue
+		}
+	}
+
+	fmt.Println("[Phase 2] ✅ TLS certificates updated successfully!")
+	fmt.Println("[Phase 2] Cluster is now accessible via NLB DNS")
+
+	return nil
+}
+
+// updateNodeTLSCert updates RKE2 config on a single node and restarts the service
+func (p *AWSProvider) updateNodeTLSCert(instanceID, nlbDNS, region string) error {
+	// Create update script
+	updateScript := fmt.Sprintf(`#!/bin/bash
+set -e
+
+echo "Backing up RKE2 config..."
+sudo cp /etc/rancher/rke2/config.yaml /etc/rancher/rke2/config.yaml.backup
+
+echo "Adding NLB DNS to TLS SANs..."
+if ! grep -q "%s" /etc/rancher/rke2/config.yaml; then
+  sudo tee -a /etc/rancher/rke2/config.yaml <<EOF
+  - %s
+EOF
+fi
+
+echo "Removing old TLS certificates..."
+sudo rm -f /var/lib/rancher/rke2/server/tls/serving-kube-apiserver.crt
+sudo rm -f /var/lib/rancher/rke2/server/tls/serving-kube-apiserver.key
+
+echo "Restarting RKE2 to regenerate certificates..."
+sudo systemctl restart rke2-server
+
+echo "Waiting for RKE2 to be ready..."
+for i in {1..60}; do
+  if sudo /var/lib/rancher/rke2/bin/kubectl --kubeconfig /etc/rancher/rke2/rke2.yaml get nodes >/dev/null 2>&1; then
+    echo "RKE2 is ready!"
+    break
+  fi
+  sleep 5
+done
+
+echo "TLS certificate update complete!"
+`, nlbDNS, nlbDNS)
+
+	// Send command via SSM
+	cmd := exec.Command("aws", "ssm", "send-command",
+		"--document-name", "AWS-RunShellScript",
+		"--instance-ids", instanceID,
+		"--parameters", fmt.Sprintf("commands=%s", updateScript),
+		"--region", region,
+		"--output", "text",
+		"--query", "Command.CommandId")
+
+	output, err := cmd.Output()
+	if err != nil {
+		return fmt.Errorf("failed to send SSM command: %w", err)
+	}
+
+	commandID := strings.TrimSpace(string(output))
+
+	// Wait for command to complete
+	fmt.Printf("  Waiting for update to complete (command: %s)...\n", commandID)
+	for i := 0; i < 60; i++ {
+		statusCmd := exec.Command("aws", "ssm", "get-command-invocation",
+			"--command-id", commandID,
+			"--instance-id", instanceID,
+			"--region", region,
+			"--query", "Status",
+			"--output", "text")
+
+		statusOutput, err := statusCmd.Output()
+		if err != nil {
+			time.Sleep(5 * time.Second)
+			continue
+		}
+
+		status := strings.TrimSpace(string(statusOutput))
+		if status == "Success" {
+			fmt.Println("  ✓ Update completed successfully")
+			return nil
+		} else if status == "Failed" || status == "Cancelled" || status == "TimedOut" {
+			return fmt.Errorf("command failed with status: %s", status)
+		}
+
+		time.Sleep(5 * time.Second)
+	}
+
+	return fmt.Errorf("timeout waiting for update to complete")
 }
