@@ -52,3 +52,43 @@ func (p *VSphereProvider) GetKubeconfig(cfg *config.ClusterConfig) (string, erro
 func (p *VSphereProvider) GetStatus(cfg *config.ClusterConfig) (string, error) {
 	return "unknown", fmt.Errorf("vSphere provider not yet implemented")
 }
+
+// GetClusterStatus returns detailed cluster status
+func (p *VSphereProvider) GetClusterStatus(cfg *config.ClusterConfig) (*ClusterStatus, error) {
+	return nil, fmt.Errorf("vSphere provider not yet implemented")
+}
+
+// ValidateAPIServer checks if the API server is accessible
+func (p *VSphereProvider) ValidateAPIServer(cfg *config.ClusterConfig) (string, error) {
+	return "", fmt.Errorf("vSphere provider not yet implemented")
+}
+
+// ValidateNodes checks if all nodes are ready
+func (p *VSphereProvider) ValidateNodes(cfg *config.ClusterConfig) (string, error) {
+	return "", fmt.Errorf("vSphere provider not yet implemented")
+}
+
+// ValidateSystemPods checks if all system pods are running
+func (p *VSphereProvider) ValidateSystemPods(cfg *config.ClusterConfig) (string, error) {
+	return "", fmt.Errorf("vSphere provider not yet implemented")
+}
+
+// ValidateEtcd checks etcd cluster health
+func (p *VSphereProvider) ValidateEtcd(cfg *config.ClusterConfig) (string, error) {
+	return "", fmt.Errorf("vSphere provider not yet implemented")
+}
+
+// ValidateDNS checks DNS functionality
+func (p *VSphereProvider) ValidateDNS(cfg *config.ClusterConfig) (string, error) {
+	return "", fmt.Errorf("vSphere provider not yet implemented")
+}
+
+// ValidateNetworking checks pod networking
+func (p *VSphereProvider) ValidateNetworking(cfg *config.ClusterConfig) (string, error) {
+	return "", fmt.Errorf("vSphere provider not yet implemented")
+}
+
+// ValidatePodScheduling checks if pods can be scheduled
+func (p *VSphereProvider) ValidatePodScheduling(cfg *config.ClusterConfig) (string, error) {
+	return "", fmt.Errorf("vSphere provider not yet implemented")
+}

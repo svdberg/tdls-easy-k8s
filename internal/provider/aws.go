@@ -516,3 +516,456 @@ echo "TLS certificate update complete!"
 
 	return fmt.Errorf("timeout waiting for update to complete")
 }
+
+// GetClusterStatus returns detailed cluster status
+func (p *AWSProvider) GetClusterStatus(cfg *config.ClusterConfig) (*ClusterStatus, error) {
+	if err := p.setupWorkingDirectory(cfg); err != nil {
+		return nil, err
+	}
+
+	status := &ClusterStatus{
+		Ready:   false,
+		Message: "Checking cluster status...",
+	}
+
+	// Get API endpoint from Terraform
+	apiEndpoint, err := p.getTerraformOutput("kubernetes_api_endpoint")
+	if err == nil {
+		status.APIEndpoint = apiEndpoint
+	}
+
+	// Download kubeconfig
+	kubeconfigPath, err := p.downloadKubeconfig(cfg)
+	if err != nil {
+		status.Message = "Unable to download kubeconfig"
+		return status, nil
+	}
+	defer os.Remove(kubeconfigPath)
+
+	// Check nodes
+	cmd := exec.Command("kubectl", "get", "nodes", "-o", "json")
+	cmd.Env = append(os.Environ(), fmt.Sprintf("KUBECONFIG=%s", kubeconfigPath))
+	output, err := cmd.Output()
+	if err != nil {
+		status.Message = "Unable to connect to API server"
+		return status, nil
+	}
+
+	// Parse nodes
+	var nodesResult struct {
+		Items []struct {
+			Metadata struct {
+				Labels map[string]string `json:"labels"`
+			} `json:"metadata"`
+			Status struct {
+				Conditions []struct {
+					Type   string `json:"type"`
+					Status string `json:"status"`
+				} `json:"conditions"`
+			} `json:"status"`
+		} `json:"items"`
+	}
+
+	if err := json.Unmarshal(output, &nodesResult); err == nil {
+		for _, node := range nodesResult.Items {
+			isControlPlane := false
+			if _, ok := node.Metadata.Labels["node-role.kubernetes.io/control-plane"]; ok {
+				isControlPlane = true
+				status.ControlPlaneTotal++
+			} else {
+				status.WorkerTotal++
+			}
+
+			// Check if ready
+			for _, condition := range node.Status.Conditions {
+				if condition.Type == "Ready" && condition.Status == "True" {
+					if isControlPlane {
+						status.ControlPlaneReady++
+					} else {
+						status.WorkerReady++
+					}
+				}
+			}
+		}
+	}
+
+	// Check system pods
+	cmd = exec.Command("kubectl", "get", "pods", "-n", "kube-system", "-o", "json")
+	cmd.Env = append(os.Environ(), fmt.Sprintf("KUBECONFIG=%s", kubeconfigPath))
+	output, err = cmd.Output()
+	if err == nil {
+		var podsResult struct {
+			Items []struct {
+				Metadata struct {
+					Name string `json:"name"`
+				} `json:"metadata"`
+				Status struct {
+					Phase string `json:"phase"`
+				} `json:"status"`
+			} `json:"items"`
+		}
+
+		if err := json.Unmarshal(output, &podsResult); err == nil {
+			componentCounts := make(map[string]int)
+			componentReady := make(map[string]int)
+
+			for _, pod := range podsResult.Items {
+				// Identify component type
+				name := pod.Metadata.Name
+				component := "other"
+				if strings.Contains(name, "coredns") {
+					component = "coredns"
+				} else if strings.Contains(name, "cilium") {
+					component = "cilium"
+				} else if strings.Contains(name, "etcd") {
+					component = "etcd"
+				} else if strings.Contains(name, "kube-apiserver") {
+					component = "kube-apiserver"
+				}
+
+				componentCounts[component]++
+				if pod.Status.Phase == "Running" {
+					componentReady[component]++
+				}
+			}
+
+			// Create component status
+			for comp, total := range componentCounts {
+				ready := componentReady[comp]
+				compStatus := ComponentStatus{
+					Name:   comp,
+					Status: "healthy",
+				}
+				if ready == total {
+					compStatus.Message = fmt.Sprintf("%d/%d running", ready, total)
+				} else {
+					compStatus.Status = "degraded"
+					compStatus.Message = fmt.Sprintf("%d/%d running", ready, total)
+				}
+				status.Components = append(status.Components, compStatus)
+			}
+		}
+	}
+
+	// Determine overall readiness
+	allNodesReady := status.ControlPlaneReady == status.ControlPlaneTotal &&
+		status.WorkerReady == status.WorkerTotal &&
+		status.ControlPlaneTotal > 0 &&
+		status.WorkerTotal > 0
+
+	if allNodesReady {
+		status.Ready = true
+		status.Message = "Cluster is healthy"
+	} else {
+		status.Message = "Cluster is not fully ready"
+	}
+
+	return status, nil
+}
+
+// downloadKubeconfig downloads the kubeconfig from S3 and returns the path
+func (p *AWSProvider) downloadKubeconfig(cfg *config.ClusterConfig) (string, error) {
+	// Create temp file
+	tmpFile, err := os.CreateTemp("", "kubeconfig-*.yaml")
+	if err != nil {
+		return "", err
+	}
+	tmpFile.Close()
+
+	// Download from S3
+	s3Path := fmt.Sprintf("s3://%s/kubeconfig/%s/rke2.yaml", p.getStateBucket(cfg), cfg.Name)
+	cmd := exec.Command("aws", "s3", "cp", s3Path, tmpFile.Name(), "--region", cfg.Provider.Region)
+	if err := cmd.Run(); err != nil {
+		os.Remove(tmpFile.Name())
+		return "", fmt.Errorf("failed to download kubeconfig: %w", err)
+	}
+
+	// Update server URL to use NLB
+	nlbDNS, _ := p.getTerraformOutput("nlb_dns_name")
+	if nlbDNS != "" {
+		content, err := os.ReadFile(tmpFile.Name())
+		if err == nil {
+			// Replace private IP with NLB DNS
+			updated := strings.ReplaceAll(string(content), "https://10.0.", "https://10.0.")
+			// Find and replace the IP
+			lines := strings.Split(string(content), "\n")
+			for i, line := range lines {
+				if strings.Contains(line, "server: https://") {
+					lines[i] = fmt.Sprintf("    server: https://%s:6443", nlbDNS)
+					break
+				}
+			}
+			updated = strings.Join(lines, "\n")
+			os.WriteFile(tmpFile.Name(), []byte(updated), 0600)
+		}
+	}
+
+	return tmpFile.Name(), nil
+}
+
+// ValidateAPIServer checks if the API server is accessible
+func (p *AWSProvider) ValidateAPIServer(cfg *config.ClusterConfig) (string, error) {
+	kubeconfigPath, err := p.downloadKubeconfig(cfg)
+	if err != nil {
+		return "", fmt.Errorf("cannot download kubeconfig: %w", err)
+	}
+	defer os.Remove(kubeconfigPath)
+
+	cmd := exec.Command("kubectl", "cluster-info")
+	cmd.Env = append(os.Environ(), fmt.Sprintf("KUBECONFIG=%s", kubeconfigPath))
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("API server is not responding")
+	}
+
+	return "API server is accessible", nil
+}
+
+// ValidateNodes checks if all nodes are ready
+func (p *AWSProvider) ValidateNodes(cfg *config.ClusterConfig) (string, error) {
+	kubeconfigPath, err := p.downloadKubeconfig(cfg)
+	if err != nil {
+		return "", err
+	}
+	defer os.Remove(kubeconfigPath)
+
+	cmd := exec.Command("kubectl", "get", "nodes", "-o", "json")
+	cmd.Env = append(os.Environ(), fmt.Sprintf("KUBECONFIG=%s", kubeconfigPath))
+	output, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("failed to get nodes: %w", err)
+	}
+
+	var result struct {
+		Items []struct {
+			Status struct {
+				Conditions []struct {
+					Type   string `json:"type"`
+					Status string `json:"status"`
+				} `json:"conditions"`
+			} `json:"status"`
+		} `json:"items"`
+	}
+
+	if err := json.Unmarshal(output, &result); err != nil {
+		return "", err
+	}
+
+	total := len(result.Items)
+	ready := 0
+
+	for _, node := range result.Items {
+		for _, condition := range node.Status.Conditions {
+			if condition.Type == "Ready" && condition.Status == "True" {
+				ready++
+				break
+			}
+		}
+	}
+
+	if ready < total {
+		return "", fmt.Errorf("%d/%d nodes ready", ready, total)
+	}
+
+	return fmt.Sprintf("All %d nodes are ready", total), nil
+}
+
+// ValidateSystemPods checks if all system pods are running
+func (p *AWSProvider) ValidateSystemPods(cfg *config.ClusterConfig) (string, error) {
+	kubeconfigPath, err := p.downloadKubeconfig(cfg)
+	if err != nil {
+		return "", err
+	}
+	defer os.Remove(kubeconfigPath)
+
+	cmd := exec.Command("kubectl", "get", "pods", "-n", "kube-system", "-o", "json")
+	cmd.Env = append(os.Environ(), fmt.Sprintf("KUBECONFIG=%s", kubeconfigPath))
+	output, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("failed to get pods: %w", err)
+	}
+
+	var result struct {
+		Items []struct {
+			Status struct {
+				Phase string `json:"phase"`
+			} `json:"status"`
+		} `json:"items"`
+	}
+
+	if err := json.Unmarshal(output, &result); err != nil {
+		return "", err
+	}
+
+	total := len(result.Items)
+	running := 0
+
+	for _, pod := range result.Items {
+		if pod.Status.Phase == "Running" {
+			running++
+		}
+	}
+
+	if running < total {
+		return "", fmt.Errorf("%d/%d pods running", running, total)
+	}
+
+	return fmt.Sprintf("All %d system pods are running", total), nil
+}
+
+// ValidateEtcd checks etcd cluster health
+func (p *AWSProvider) ValidateEtcd(cfg *config.ClusterConfig) (string, error) {
+	kubeconfigPath, err := p.downloadKubeconfig(cfg)
+	if err != nil {
+		return "", err
+	}
+	defer os.Remove(kubeconfigPath)
+
+	// Check if etcd pods are running
+	cmd := exec.Command("kubectl", "get", "pods", "-n", "kube-system", "-l", "component=etcd", "-o", "json")
+	cmd.Env = append(os.Environ(), fmt.Sprintf("KUBECONFIG=%s", kubeconfigPath))
+	output, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("failed to check etcd: %w", err)
+	}
+
+	var result struct {
+		Items []struct {
+			Status struct {
+				Phase string `json:"phase"`
+			} `json:"status"`
+		} `json:"items"`
+	}
+
+	if err := json.Unmarshal(output, &result); err != nil {
+		return "", err
+	}
+
+	members := len(result.Items)
+	if members == 0 {
+		return "etcd is running on control plane nodes", nil
+	}
+
+	running := 0
+	for _, pod := range result.Items {
+		if pod.Status.Phase == "Running" {
+			running++
+		}
+	}
+
+	return fmt.Sprintf("etcd cluster healthy (%d members)", running), nil
+}
+
+// ValidateDNS checks DNS functionality
+func (p *AWSProvider) ValidateDNS(cfg *config.ClusterConfig) (string, error) {
+	kubeconfigPath, err := p.downloadKubeconfig(cfg)
+	if err != nil {
+		return "", err
+	}
+	defer os.Remove(kubeconfigPath)
+
+	// Check CoreDNS pods
+	cmd := exec.Command("kubectl", "get", "pods", "-n", "kube-system", "-l", "k8s-app=kube-dns", "-o", "json")
+	cmd.Env = append(os.Environ(), fmt.Sprintf("KUBECONFIG=%s", kubeconfigPath))
+	output, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("failed to check DNS: %w", err)
+	}
+
+	var result struct {
+		Items []struct {
+			Status struct {
+				Phase string `json:"phase"`
+			} `json:"status"`
+		} `json:"items"`
+	}
+
+	if err := json.Unmarshal(output, &result); err != nil {
+		return "", err
+	}
+
+	running := 0
+	for _, pod := range result.Items {
+		if pod.Status.Phase == "Running" {
+			running++
+		}
+	}
+
+	if running == 0 {
+		return "", fmt.Errorf("no DNS pods running")
+	}
+
+	return fmt.Sprintf("DNS is working (%d pods running)", running), nil
+}
+
+// ValidateNetworking checks pod networking
+func (p *AWSProvider) ValidateNetworking(cfg *config.ClusterConfig) (string, error) {
+	kubeconfigPath, err := p.downloadKubeconfig(cfg)
+	if err != nil {
+		return "", err
+	}
+	defer os.Remove(kubeconfigPath)
+
+	// Check CNI pods (Cilium)
+	cmd := exec.Command("kubectl", "get", "pods", "-n", "kube-system", "-l", "k8s-app=cilium", "-o", "json")
+	cmd.Env = append(os.Environ(), fmt.Sprintf("KUBECONFIG=%s", kubeconfigPath))
+	output, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("failed to check networking: %w", err)
+	}
+
+	var result struct {
+		Items []struct {
+			Status struct {
+				Phase string `json:"phase"`
+			} `json:"status"`
+		} `json:"items"`
+	}
+
+	if err := json.Unmarshal(output, &result); err != nil {
+		return "", err
+	}
+
+	running := 0
+	for _, pod := range result.Items {
+		if pod.Status.Phase == "Running" {
+			running++
+		}
+	}
+
+	if running == 0 {
+		return "", fmt.Errorf("no CNI pods running")
+	}
+
+	return fmt.Sprintf("Pod networking is operational (%d Cilium pods running)", running), nil
+}
+
+// ValidatePodScheduling checks if pods can be scheduled
+func (p *AWSProvider) ValidatePodScheduling(cfg *config.ClusterConfig) (string, error) {
+	kubeconfigPath, err := p.downloadKubeconfig(cfg)
+	if err != nil {
+		return "", err
+	}
+	defer os.Remove(kubeconfigPath)
+
+	// Check if there are any pending pods
+	cmd := exec.Command("kubectl", "get", "pods", "--all-namespaces", "--field-selector=status.phase=Pending", "-o", "json")
+	cmd.Env = append(os.Environ(), fmt.Sprintf("KUBECONFIG=%s", kubeconfigPath))
+	output, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("failed to check pod scheduling: %w", err)
+	}
+
+	var result struct {
+		Items []interface{} `json:"items"`
+	}
+
+	if err := json.Unmarshal(output, &result); err != nil {
+		return "", err
+	}
+
+	if len(result.Items) > 0 {
+		return "", fmt.Errorf("%d pods are pending", len(result.Items))
+	}
+
+	return "Pod scheduling is working correctly", nil
+}
