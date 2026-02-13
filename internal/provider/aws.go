@@ -168,8 +168,17 @@ func (p *AWSProvider) GetKubeconfig(cfg *config.ClusterConfig) (string, error) {
 
 // GetStatus returns the current status of the AWS infrastructure
 func (p *AWSProvider) GetStatus(cfg *config.ClusterConfig) (string, error) {
-	if err := p.setupWorkingDirectory(cfg); err != nil {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
 		return "unknown", err
+	}
+
+	p.workDir = filepath.Join(homeDir, ".tdls-k8s", "clusters", cfg.Name, "terraform")
+
+	// If terraform state doesn't exist, the cluster was never provisioned
+	stateFile := filepath.Join(p.workDir, "terraform.tfstate")
+	if _, err := os.Stat(stateFile); os.IsNotExist(err) {
+		return "unknown", nil
 	}
 
 	// Run tofu show to get status

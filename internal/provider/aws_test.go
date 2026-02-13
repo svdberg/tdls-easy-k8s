@@ -1,6 +1,8 @@
 package provider
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/user/tdls-easy-k8s/internal/config"
@@ -74,6 +76,11 @@ func TestAWSProvider_DestroyInfrastructure_NoState(t *testing.T) {
 		Name:     "nonexistent-cluster",
 		Provider: config.ProviderConfig{Type: "aws", Region: "us-east-1"},
 	}
+	// Clean up any directory created by setupWorkingDirectory
+	t.Cleanup(func() {
+		homeDir, _ := os.UserHomeDir()
+		os.RemoveAll(filepath.Join(homeDir, ".tdls-k8s", "clusters", cfg.Name))
+	})
 	// Should succeed even if no state exists (idempotent)
 	err := p.DestroyInfrastructure(cfg)
 	if err != nil {
