@@ -41,15 +41,15 @@ type Provider interface {
 
 // ClusterStatus represents the overall status of a cluster
 type ClusterStatus struct {
-	Ready              bool
-	Message            string
-	APIEndpoint        string
-	ControlPlaneTotal  int
-	ControlPlaneReady  int
-	WorkerTotal        int
-	WorkerReady        int
-	Components         []ComponentStatus
-	CreatedAt          time.Time
+	Ready             bool
+	Message           string
+	APIEndpoint       string
+	ControlPlaneTotal int
+	ControlPlaneReady int
+	WorkerTotal       int
+	WorkerReady       int
+	Components        []ComponentStatus
+	CreatedAt         time.Time
 }
 
 // ComponentStatus represents the status of a system component

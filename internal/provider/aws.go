@@ -277,22 +277,22 @@ func (p *AWSProvider) copyTerraformModules() error {
 // generateTerraformVars generates terraform.tfvars.json from the cluster config
 func (p *AWSProvider) generateTerraformVars(cfg *config.ClusterConfig) error {
 	vars := map[string]interface{}{
-		"cluster_name":                 cfg.Name,
-		"environment":                  "production",
-		"aws_region":                   cfg.Provider.Region,
-		"vpc_cidr":                     cfg.Provider.VPC.CIDR,
-		"control_plane_count":          cfg.Nodes.ControlPlane.Count,
-		"control_plane_instance_type":  cfg.Nodes.ControlPlane.InstanceType,
-		"worker_count":                 cfg.Nodes.Workers.Count,
-		"worker_instance_type":         cfg.Nodes.Workers.InstanceType,
-		"kubernetes_version":           cfg.Kubernetes.Version,
-		"rke2_version":                 p.getRKE2Version(cfg.Kubernetes.Version),
-		"kubernetes_distribution":      cfg.Kubernetes.Distribution,
-		"state_bucket":                 p.getStateBucket(cfg),
-		"enable_nlb":                   true,
-		"enable_cloudwatch_logs":       true,
-		"enable_session_manager":       true,
-		"enable_encryption":            true,
+		"cluster_name":                cfg.Name,
+		"environment":                 "production",
+		"aws_region":                  cfg.Provider.Region,
+		"vpc_cidr":                    cfg.Provider.VPC.CIDR,
+		"control_plane_count":         cfg.Nodes.ControlPlane.Count,
+		"control_plane_instance_type": cfg.Nodes.ControlPlane.InstanceType,
+		"worker_count":                cfg.Nodes.Workers.Count,
+		"worker_instance_type":        cfg.Nodes.Workers.InstanceType,
+		"kubernetes_version":          cfg.Kubernetes.Version,
+		"rke2_version":                p.getRKE2Version(cfg.Kubernetes.Version),
+		"kubernetes_distribution":     cfg.Kubernetes.Distribution,
+		"state_bucket":                p.getStateBucket(cfg),
+		"enable_nlb":                  true,
+		"enable_cloudwatch_logs":      true,
+		"enable_session_manager":      true,
+		"enable_encryption":           true,
 	}
 
 	jsonData, err := json.MarshalIndent(vars, "", "  ")
