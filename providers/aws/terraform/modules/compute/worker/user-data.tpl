@@ -41,14 +41,14 @@ apt-get install -y -qq curl wget jq
 # Wait for API Server to be Available
 # =============================================================================
 
-echo "[$(date)] Waiting for Kubernetes API server to be available..."
+echo "[$(date)] Waiting for RKE2 registration endpoint to be available..."
 
 for i in {1..120}; do
-  if curl -k -s "https://$API_ENDPOINT:6443/healthz" 2>/dev/null | grep -q "ok"; then
-    echo "[$(date)] API server is ready!"
+  if curl -k -s -o /dev/null -w "%%{http_code}" "https://$API_ENDPOINT:9345/cacerts" 2>/dev/null | grep -q "200"; then
+    echo "[$(date)] RKE2 registration endpoint is ready!"
     break
   fi
-  echo "Waiting for API server... ($i/120)"
+  echo "Waiting for registration endpoint... ($i/120)"
   sleep 10
 done
 
@@ -77,7 +77,7 @@ AVAILABILITY_ZONE=$(curl -s http://169.254.169.254/latest/meta-data/placement/av
 REGION=$(echo $AVAILABILITY_ZONE | sed 's/[a-z]$//')
 
 cat <<EOF > /etc/rancher/rke2/config.yaml
-server: https://$API_ENDPOINT:6443
+server: https://$API_ENDPOINT:9345
 token: $CLUSTER_TOKEN
 node-label:
   - "node.kubernetes.io/instance-type=$INSTANCE_TYPE"

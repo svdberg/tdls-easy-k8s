@@ -31,15 +31,15 @@ resource "aws_security_group_rule" "control_plane_api_ingress" {
   security_group_id = aws_security_group.control_plane.id
 }
 
-# RKE2 Supervisor API (from other control plane nodes)
+# RKE2 Supervisor/Registration API (from control plane, workers, and NLB)
 resource "aws_security_group_rule" "control_plane_supervisor_ingress" {
-  type                     = "ingress"
-  from_port                = 9345
-  to_port                  = 9345
-  protocol                 = "tcp"
-  source_security_group_id = aws_security_group.control_plane.id
-  description              = "RKE2 supervisor API"
-  security_group_id        = aws_security_group.control_plane.id
+  type              = "ingress"
+  from_port         = 9345
+  to_port           = 9345
+  protocol          = "tcp"
+  cidr_blocks       = [var.vpc_cidr]
+  description       = "RKE2 supervisor API (workers, NLB, control plane)"
+  security_group_id = aws_security_group.control_plane.id
 }
 
 # etcd client port (from other control plane nodes)

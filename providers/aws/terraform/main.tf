@@ -178,7 +178,7 @@ module "worker" {
   root_volume_type          = var.worker_root_volume_type
   cluster_token             = local.cluster_token
   rke2_version              = var.rke2_version
-  api_endpoint              = local.api_endpoint
+  api_endpoint              = module.control_plane.first_node_ip
   enable_spot_instances     = var.enable_spot_instances
   enable_encryption         = var.enable_encryption
   kms_key_id                = var.enable_encryption ? module.iam.kms_key_arn : null

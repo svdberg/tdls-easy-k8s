@@ -213,6 +213,12 @@ func (p *AWSProvider) CreateInfrastructure(cfg *config.ClusterConfig) error {
 		fmt.Println("You can manually update certificates later if needed.")
 	}
 
+	// 8. Phase 3: Restart worker agents so they reconnect with updated TLS certs
+	if err := p.restartWorkerAgents(cfg); err != nil {
+		fmt.Printf("\n⚠️  Warning: Failed to restart worker agents: %v\n", err)
+		fmt.Println("You can manually restart workers: aws ssm send-command --document-name AWS-RunShellScript --parameters '{\"commands\":[\"sudo systemctl restart rke2-agent\"]}' --instance-ids <id>")
+	}
+
 	fmt.Println("\n📝 Next steps:")
 	fmt.Println("  1. Wait for RKE2 to complete installation (~5 minutes)")
 	fmt.Println("  2. Download and configure kubeconfig:")
@@ -516,9 +522,20 @@ func (p *AWSProvider) createS3Bucket(cfg *config.ClusterConfig) error {
 	return nil
 }
 
-// getTerraformOutput retrieves a specific output value from Terraform state
+// getTerraformOutput retrieves a string output value from Terraform state
 func (p *AWSProvider) getTerraformOutput(outputName string) (string, error) {
 	cmd := exec.Command("tofu", "output", "-raw", outputName)
+	cmd.Dir = p.workDir
+	output, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("failed to get output %s: %w", outputName, err)
+	}
+	return strings.TrimSpace(string(output)), nil
+}
+
+// getTerraformOutputJSON retrieves a complex (list/map) output value as a JSON string
+func (p *AWSProvider) getTerraformOutputJSON(outputName string) (string, error) {
+	cmd := exec.Command("tofu", "output", "-json", outputName)
 	cmd.Dir = p.workDir
 	output, err := cmd.Output()
 	if err != nil {
@@ -539,8 +556,8 @@ func (p *AWSProvider) updateTLSCertificatesWithNLB(cfg *config.ClusterConfig) er
 
 	fmt.Printf("[Phase 2] NLB DNS: %s\n", nlbDNS)
 
-	// Get control plane instance IDs
-	controlPlaneIDs, err := p.getTerraformOutput("control_plane_instance_ids")
+	// Get control plane instance IDs (list output, needs JSON format)
+	controlPlaneIDs, err := p.getTerraformOutputJSON("control_plane_instance_ids")
 	if err != nil {
 		return fmt.Errorf("failed to get control plane instance IDs: %w", err)
 	}
@@ -588,9 +605,7 @@ sudo cp /etc/rancher/rke2/config.yaml /etc/rancher/rke2/config.yaml.backup
 
 echo "Adding NLB DNS to TLS SANs..."
 if ! grep -q "%s" /etc/rancher/rke2/config.yaml; then
-  sudo tee -a /etc/rancher/rke2/config.yaml <<EOF
-  - %s
-EOF
+  sudo sed -i '/^tls-san:/a\  - %s' /etc/rancher/rke2/config.yaml
 fi
 
 echo "Removing old TLS certificates..."
@@ -612,17 +627,38 @@ done
 echo "TLS certificate update complete!"
 `, nlbDNS, nlbDNS)
 
+	// Write script to a temp file for SSM to consume
+	tmpFile, err := os.CreateTemp("", "rke2-tls-update-*.sh")
+	if err != nil {
+		return fmt.Errorf("failed to create temp file: %w", err)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	if _, err := tmpFile.WriteString(updateScript); err != nil {
+		tmpFile.Close()
+		return fmt.Errorf("failed to write temp file: %w", err)
+	}
+	tmpFile.Close()
+
+	// Build JSON parameters with the script commands as an array of strings
+	lines := strings.Split(strings.TrimSpace(updateScript), "\n")
+	jsonLines, _ := json.Marshal(lines)
+	params := fmt.Sprintf(`{"commands":%s}`, string(jsonLines))
+
 	// Send command via SSM
 	cmd := exec.Command("aws", "ssm", "send-command",
 		"--document-name", "AWS-RunShellScript",
 		"--instance-ids", instanceID,
-		"--parameters", fmt.Sprintf("commands=%s", updateScript),
+		"--parameters", params,
 		"--region", region,
 		"--output", "text",
 		"--query", "Command.CommandId")
 
 	output, err := cmd.Output()
 	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return fmt.Errorf("failed to send SSM command: %s", strings.TrimSpace(string(exitErr.Stderr)))
+		}
 		return fmt.Errorf("failed to send SSM command: %w", err)
 	}
 
@@ -656,6 +692,61 @@ echo "TLS certificate update complete!"
 	}
 
 	return fmt.Errorf("timeout waiting for update to complete")
+}
+
+// restartWorkerAgents restarts the RKE2 agent on all worker nodes so they
+// reconnect using the updated TLS certificates.
+func (p *AWSProvider) restartWorkerAgents(cfg *config.ClusterConfig) error {
+	workerIDsJSON, err := p.getTerraformOutputJSON("worker_instance_ids")
+	if err != nil {
+		return fmt.Errorf("failed to get worker instance IDs: %w", err)
+	}
+
+	var workerIDs []string
+	if err := json.Unmarshal([]byte(workerIDsJSON), &workerIDs); err != nil {
+		return fmt.Errorf("failed to parse worker instance IDs: %w", err)
+	}
+
+	if len(workerIDs) == 0 {
+		fmt.Println("\n[Phase 3] No worker nodes to restart")
+		return nil
+	}
+
+	fmt.Printf("\n[Phase 3] Restarting RKE2 agent on %d worker nodes...\n", len(workerIDs))
+
+	// Wait for SSM agent to be available on workers
+	fmt.Println("[Phase 3] Waiting for SSM agent to be ready (30s)...")
+	time.Sleep(30 * time.Second)
+
+	for i, workerID := range workerIDs {
+		fmt.Printf("[Phase 3] Restarting worker %d/%d: %s\n", i+1, len(workerIDs), workerID)
+
+		params := `{"commands":["sudo systemctl restart rke2-agent"]}`
+		cmd := exec.Command("aws", "ssm", "send-command",
+			"--document-name", "AWS-RunShellScript",
+			"--instance-ids", workerID,
+			"--parameters", params,
+			"--region", cfg.Provider.Region,
+			"--output", "text",
+			"--query", "Command.CommandId")
+
+		output, err := cmd.Output()
+		if err != nil {
+			if exitErr, ok := err.(*exec.ExitError); ok {
+				fmt.Printf("  Warning: Failed to restart worker %s: %s\n", workerID, strings.TrimSpace(string(exitErr.Stderr)))
+			} else {
+				fmt.Printf("  Warning: Failed to restart worker %s: %v\n", workerID, err)
+			}
+			continue
+		}
+
+		commandID := strings.TrimSpace(string(output))
+		fmt.Printf("  Sent restart command: %s\n", commandID)
+	}
+
+	fmt.Println("[Phase 3] Worker agent restart commands sent")
+	fmt.Println("[Phase 3] Workers will rejoin the cluster within 1-2 minutes")
+	return nil
 }
 
 // GetClusterStatus returns detailed cluster status

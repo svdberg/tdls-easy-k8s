@@ -81,3 +81,58 @@ resource "aws_lb_listener" "api_server" {
     var.tags
   )
 }
+
+# =============================================================================
+# Target Group for RKE2 Registration (port 9345)
+# =============================================================================
+
+resource "aws_lb_target_group" "rke2_register" {
+  name     = "${var.cluster_name}-rke2-register-tg"
+  port     = 9345
+  protocol = "TCP"
+  vpc_id   = var.vpc_id
+
+  health_check {
+    enabled             = true
+    interval            = 30
+    port                = 9345
+    protocol            = "TCP"
+    healthy_threshold   = 3
+    unhealthy_threshold = 3
+  }
+
+  deregistration_delay = 30
+
+  tags = merge(
+    {
+      Name = "${var.cluster_name}-rke2-register-tg"
+    },
+    var.tags
+  )
+}
+
+resource "aws_lb_target_group_attachment" "rke2_register" {
+  count = length(var.control_plane_instance_ids)
+
+  target_group_arn = aws_lb_target_group.rke2_register.arn
+  target_id        = var.control_plane_instance_ids[count.index]
+  port             = 9345
+}
+
+resource "aws_lb_listener" "rke2_register" {
+  load_balancer_arn = aws_lb.nlb.arn
+  port              = 9345
+  protocol          = "TCP"
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.rke2_register.arn
+  }
+
+  tags = merge(
+    {
+      Name = "${var.cluster_name}-rke2-register-listener"
+    },
+    var.tags
+  )
+}
