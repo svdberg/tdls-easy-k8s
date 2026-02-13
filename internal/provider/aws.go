@@ -4,14 +4,53 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/fs"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/user/tdls-easy-k8s/internal/config"
 )
+
+// awsRegions is the set of valid AWS commercial regions.
+var awsRegions = map[string]bool{
+	"us-east-1":      true,
+	"us-east-2":      true,
+	"us-west-1":      true,
+	"us-west-2":      true,
+	"af-south-1":     true,
+	"ap-east-1":      true,
+	"ap-south-1":     true,
+	"ap-south-2":     true,
+	"ap-southeast-1": true,
+	"ap-southeast-2": true,
+	"ap-southeast-3": true,
+	"ap-southeast-4": true,
+	"ap-southeast-5": true,
+	"ap-northeast-1": true,
+	"ap-northeast-2": true,
+	"ap-northeast-3": true,
+	"ca-central-1":   true,
+	"ca-west-1":      true,
+	"eu-central-1":   true,
+	"eu-central-2":   true,
+	"eu-west-1":      true,
+	"eu-west-2":      true,
+	"eu-west-3":      true,
+	"eu-south-1":     true,
+	"eu-south-2":     true,
+	"eu-north-1":     true,
+	"il-central-1":   true,
+	"me-south-1":     true,
+	"me-central-1":   true,
+	"sa-east-1":      true,
+}
+
+// instanceTypePattern matches AWS EC2 instance type names (e.g., t3.medium, m5.xlarge, c6i.2xlarge).
+var instanceTypePattern = regexp.MustCompile(`^[a-z][a-z0-9]*\.[a-z0-9]+$`)
 
 // AWSProvider implements the Provider interface for AWS
 type AWSProvider struct {
@@ -38,11 +77,83 @@ func (p *AWSProvider) ValidateConfig(cfg *config.ClusterConfig) error {
 		return fmt.Errorf("AWS region is required")
 	}
 
-	// TODO: Add more validation
-	// - VPC CIDR validation
-	// - Instance type validation
-	// - AWS credentials check
+	if !awsRegions[cfg.Provider.Region] {
+		return fmt.Errorf("invalid AWS region %q", cfg.Provider.Region)
+	}
 
+	if err := validateVPCCIDR(cfg.Provider.VPC.CIDR); err != nil {
+		return err
+	}
+
+	if err := validateInstanceType("control plane", cfg.Nodes.ControlPlane.InstanceType); err != nil {
+		return err
+	}
+
+	if err := validateInstanceType("worker", cfg.Nodes.Workers.InstanceType); err != nil {
+		return err
+	}
+
+	// Check AWS CLI is available and credentials are configured
+	if err := checkAWSCredentials(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// validateVPCCIDR validates that the VPC CIDR is valid, private, and appropriately sized.
+func validateVPCCIDR(cidr string) error {
+	if cidr == "" {
+		return fmt.Errorf("VPC CIDR is required")
+	}
+
+	ip, ipNet, err := net.ParseCIDR(cidr)
+	if err != nil {
+		return fmt.Errorf("invalid VPC CIDR %q: %w", cidr, err)
+	}
+
+	ones, _ := ipNet.Mask.Size()
+	if ones < 16 || ones > 24 {
+		return fmt.Errorf("VPC CIDR prefix length must be between /16 and /24, got /%d", ones)
+	}
+
+	// Must be RFC 1918 private range
+	privateRanges := []net.IPNet{
+		{IP: net.IP{10, 0, 0, 0}, Mask: net.CIDRMask(8, 32)},
+		{IP: net.IP{172, 16, 0, 0}, Mask: net.CIDRMask(12, 32)},
+		{IP: net.IP{192, 168, 0, 0}, Mask: net.CIDRMask(16, 32)},
+	}
+	isPrivate := false
+	for _, r := range privateRanges {
+		if r.Contains(ip) {
+			isPrivate = true
+			break
+		}
+	}
+	if !isPrivate {
+		return fmt.Errorf("VPC CIDR %q must be in a private range (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16)", cidr)
+	}
+
+	return nil
+}
+
+// validateInstanceType validates that an EC2 instance type name has the correct format.
+func validateInstanceType(role, instanceType string) error {
+	if instanceType == "" {
+		return fmt.Errorf("%s instance type is required", role)
+	}
+	if !instanceTypePattern.MatchString(instanceType) {
+		return fmt.Errorf("invalid %s instance type %q: must match AWS format (e.g. t3.medium, m5.xlarge)", role, instanceType)
+	}
+	return nil
+}
+
+// checkAWSCredentials verifies that the AWS CLI is installed and credentials are configured.
+func checkAWSCredentials() error {
+	cmd := exec.Command("aws", "sts", "get-caller-identity")
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("AWS credentials check failed: %s\nEnsure AWS CLI is installed and credentials are configured (aws configure)", strings.TrimSpace(string(output)))
+	}
 	return nil
 }
 

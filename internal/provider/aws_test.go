@@ -15,27 +15,33 @@ func TestAWSProvider_Name(t *testing.T) {
 	}
 }
 
-func TestAWSProvider_ValidateConfig_Valid(t *testing.T) {
-	p := NewAWSProvider()
-	cfg := &config.ClusterConfig{
+// validAWSConfig returns a config that passes all non-credential validations.
+func validAWSConfig() *config.ClusterConfig {
+	return &config.ClusterConfig{
 		Provider: config.ProviderConfig{
 			Type:   "aws",
 			Region: "us-east-1",
+			VPC:    config.VPCConfig{CIDR: "10.0.0.0/16"},
+		},
+		Nodes: config.NodesConfig{
+			ControlPlane: config.NodeGroupConfig{Count: 3, InstanceType: "t3.medium"},
+			Workers:      config.NodeGroupConfig{Count: 3, InstanceType: "t3.large"},
 		},
 	}
-	if err := p.ValidateConfig(cfg); err != nil {
+}
+
+func TestAWSProvider_ValidateConfig_Valid(t *testing.T) {
+	t.Skip("Requires AWS credentials - integration test")
+	p := NewAWSProvider()
+	if err := p.ValidateConfig(validAWSConfig()); err != nil {
 		t.Errorf("expected valid config to pass, got: %v", err)
 	}
 }
 
 func TestAWSProvider_ValidateConfig_WrongType(t *testing.T) {
 	p := NewAWSProvider()
-	cfg := &config.ClusterConfig{
-		Provider: config.ProviderConfig{
-			Type:   "vsphere",
-			Region: "us-east-1",
-		},
-	}
+	cfg := validAWSConfig()
+	cfg.Provider.Type = "vsphere"
 	if err := p.ValidateConfig(cfg); err == nil {
 		t.Error("expected error for wrong provider type")
 	}
@@ -43,13 +49,73 @@ func TestAWSProvider_ValidateConfig_WrongType(t *testing.T) {
 
 func TestAWSProvider_ValidateConfig_MissingRegion(t *testing.T) {
 	p := NewAWSProvider()
-	cfg := &config.ClusterConfig{
-		Provider: config.ProviderConfig{
-			Type: "aws",
-		},
-	}
+	cfg := validAWSConfig()
+	cfg.Provider.Region = ""
 	if err := p.ValidateConfig(cfg); err == nil {
 		t.Error("expected error for missing region")
+	}
+}
+
+func TestAWSProvider_ValidateConfig_InvalidRegion(t *testing.T) {
+	p := NewAWSProvider()
+	cfg := validAWSConfig()
+	cfg.Provider.Region = "us-east-11"
+	if err := p.ValidateConfig(cfg); err == nil {
+		t.Error("expected error for invalid region")
+	}
+}
+
+func TestValidateVPCCIDR(t *testing.T) {
+	tests := []struct {
+		name    string
+		cidr    string
+		wantErr bool
+	}{
+		{"valid 10.x /16", "10.0.0.0/16", false},
+		{"valid 172.16.x /16", "172.16.0.0/16", false},
+		{"valid 192.168.x /16", "192.168.0.0/16", false},
+		{"valid /20", "10.1.0.0/20", false},
+		{"valid /24", "10.0.1.0/24", false},
+		{"empty", "", true},
+		{"invalid format", "not-a-cidr", true},
+		{"prefix too large (/15)", "10.0.0.0/15", true},
+		{"prefix too small (/25)", "10.0.0.0/25", true},
+		{"public IP", "8.8.8.0/24", true},
+		{"public IP /16", "52.0.0.0/16", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateVPCCIDR(tt.cidr)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("validateVPCCIDR(%q) error = %v, wantErr %v", tt.cidr, err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestValidateInstanceType(t *testing.T) {
+	tests := []struct {
+		name         string
+		instanceType string
+		wantErr      bool
+	}{
+		{"t3.medium", "t3.medium", false},
+		{"m5.xlarge", "m5.xlarge", false},
+		{"c5.2xlarge", "c5.2xlarge", false},
+		{"r6i.large", "r6i.large", false},
+		{"empty", "", true},
+		{"no dot", "t3medium", true},
+		{"uppercase", "T3.Medium", true},
+		{"starts with number", "3t.medium", true},
+		{"spaces", "t3. medium", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateInstanceType("test", tt.instanceType)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("validateInstanceType(%q) error = %v, wantErr %v", tt.instanceType, err, tt.wantErr)
+			}
+		})
 	}
 }
 
