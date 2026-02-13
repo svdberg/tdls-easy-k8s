@@ -182,5 +182,58 @@ func TestAWSProvider_GetStatus_MissingWorkDir(t *testing.T) {
 	}
 }
 
+func TestCleanTerraformSourceFiles(t *testing.T) {
+	// Create a temporary working directory with source and runtime files
+	workDir := t.TempDir()
+
+	// Create source-originated files (should be removed)
+	os.WriteFile(filepath.Join(workDir, "main.tf"), []byte("# main"), 0644)
+	os.WriteFile(filepath.Join(workDir, "variables.tf"), []byte("# vars"), 0644)
+	os.WriteFile(filepath.Join(workDir, ".gitkeep"), []byte(""), 0644)
+	os.MkdirAll(filepath.Join(workDir, "modules", "networking"), 0755)
+	os.WriteFile(filepath.Join(workDir, "modules", "networking", "main.tf"), []byte("# net"), 0644)
+
+	// Create runtime files (should be preserved)
+	os.WriteFile(filepath.Join(workDir, "terraform.tfstate"), []byte("{}"), 0644)
+	os.WriteFile(filepath.Join(workDir, "terraform.tfstate.backup"), []byte("{}"), 0644)
+	os.WriteFile(filepath.Join(workDir, "terraform.tfvars.json"), []byte("{}"), 0644)
+	os.WriteFile(filepath.Join(workDir, ".terraform.lock.hcl"), []byte("# lock"), 0644)
+	os.MkdirAll(filepath.Join(workDir, ".terraform", "providers"), 0755)
+	os.WriteFile(filepath.Join(workDir, ".terraform", "providers", "registry"), []byte("data"), 0644)
+
+	p := &AWSProvider{workDir: workDir}
+	if err := p.cleanTerraformSourceFiles(); err != nil {
+		t.Fatalf("cleanTerraformSourceFiles() error: %v", err)
+	}
+
+	// Source files should be gone
+	for _, name := range []string{"main.tf", "variables.tf", ".gitkeep"} {
+		if _, err := os.Stat(filepath.Join(workDir, name)); !os.IsNotExist(err) {
+			t.Errorf("expected %s to be removed", name)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(workDir, "modules")); !os.IsNotExist(err) {
+		t.Error("expected modules/ directory to be removed")
+	}
+
+	// Runtime files should remain
+	for _, name := range []string{"terraform.tfstate", "terraform.tfstate.backup", "terraform.tfvars.json", ".terraform.lock.hcl"} {
+		if _, err := os.Stat(filepath.Join(workDir, name)); err != nil {
+			t.Errorf("expected %s to be preserved, got error: %v", name, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(workDir, ".terraform", "providers", "registry")); err != nil {
+		t.Error("expected .terraform/ directory to be preserved")
+	}
+}
+
+func TestCleanTerraformSourceFiles_NoWorkDir(t *testing.T) {
+	p := &AWSProvider{workDir: filepath.Join(t.TempDir(), "nonexistent")}
+	// Should not error when working directory doesn't exist
+	if err := p.cleanTerraformSourceFiles(); err != nil {
+		t.Fatalf("expected no error for nonexistent workDir, got: %v", err)
+	}
+}
+
 // Verify AWSProvider satisfies the Provider interface at compile time.
 var _ Provider = (*AWSProvider)(nil)

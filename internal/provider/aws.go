@@ -332,27 +332,15 @@ func (p *AWSProvider) setupWorkingDirectory(cfg *config.ClusterConfig) error {
 
 // copyTerraformModules copies the Terraform modules to the working directory
 func (p *AWSProvider) copyTerraformModules() error {
-	// Get the path to the terraform directory
-	// This assumes the binary is run from the project root or installed via go install
-	terraformDir := "providers/aws/terraform"
-
-	// Try multiple possible locations
-	possiblePaths := []string{
-		terraformDir,
-		filepath.Join("../../", terraformDir),
-		filepath.Join(os.Getenv("GOPATH"), "src/github.com/user/tdls-easy-k8s", terraformDir),
+	sourcePath, err := p.findTerraformSource()
+	if err != nil {
+		return err
 	}
 
-	var sourcePath string
-	for _, path := range possiblePaths {
-		if _, err := os.Stat(path); err == nil {
-			sourcePath = path
-			break
-		}
-	}
-
-	if sourcePath == "" {
-		return fmt.Errorf("could not find terraform modules directory")
+	// Clean stale source files before copying fresh ones.
+	// This ensures renamed/deleted files don't linger in the working directory.
+	if err := p.cleanTerraformSourceFiles(); err != nil {
+		return fmt.Errorf("failed to clean stale module files: %w", err)
 	}
 
 	// Copy the directory
@@ -389,6 +377,70 @@ func (p *AWSProvider) copyTerraformModules() error {
 
 		return os.WriteFile(targetPath, content, 0644)
 	})
+}
+
+// findTerraformSource locates the terraform modules source directory
+func (p *AWSProvider) findTerraformSource() (string, error) {
+	terraformDir := "providers/aws/terraform"
+
+	// Try the binary's directory first (for installed binaries)
+	if execPath, err := os.Executable(); err == nil {
+		execDir := filepath.Dir(execPath)
+		candidate := filepath.Join(execDir, terraformDir)
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate, nil
+		}
+	}
+
+	possiblePaths := []string{
+		terraformDir,
+		filepath.Join("../../", terraformDir),
+		filepath.Join(os.Getenv("GOPATH"), "src/github.com/user/tdls-easy-k8s", terraformDir),
+	}
+
+	for _, path := range possiblePaths {
+		if _, err := os.Stat(path); err == nil {
+			return path, nil
+		}
+	}
+
+	return "", fmt.Errorf("could not find terraform modules directory")
+}
+
+// cleanTerraformSourceFiles removes source-originated files from the working directory
+// while preserving runtime state (.terraform/, .terraform.lock.hcl, tfstate, tfvars, tfplan).
+func (p *AWSProvider) cleanTerraformSourceFiles() error {
+	// Remove the modules subdirectory entirely — it only contains source files, no state
+	modulesDir := filepath.Join(p.workDir, "modules")
+	if _, err := os.Stat(modulesDir); err == nil {
+		if err := os.RemoveAll(modulesDir); err != nil {
+			return err
+		}
+	}
+
+	// Remove top-level source files (*.tf, *.tpl, .gitkeep)
+	entries, err := os.ReadDir(p.workDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		ext := filepath.Ext(name)
+		if ext == ".tf" || ext == ".tpl" || name == ".gitkeep" {
+			if err := os.Remove(filepath.Join(p.workDir, name)); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
 }
 
 // generateTerraformVars generates terraform.tfvars.json from the cluster config
