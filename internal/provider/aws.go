@@ -128,13 +128,23 @@ func (p *AWSProvider) DestroyInfrastructure(cfg *config.ClusterConfig) error {
 		return fmt.Errorf("failed to setup working directory: %w", err)
 	}
 
+	// Check if terraform state exists
+	stateFile := filepath.Join(p.workDir, "terraform.tfstate")
+	if _, err := os.Stat(stateFile); os.IsNotExist(err) {
+		fmt.Println("\n⚠️  No terraform state file found - infrastructure may already be destroyed")
+		fmt.Printf("State file checked: %s\n", stateFile)
+		return nil
+	}
+
 	// Run tofu destroy
 	fmt.Println("\n[OpenTofu] Destroying infrastructure...")
+	fmt.Println("This may take 5-10 minutes...")
 	if err := p.runTofu("destroy", "-auto-approve"); err != nil {
 		return fmt.Errorf("terraform destroy failed: %w", err)
 	}
 
 	fmt.Println("\n✅ Infrastructure destroyed successfully!")
+	fmt.Println("All AWS resources (VPC, EC2, NLB, EBS, etc.) have been removed")
 
 	return nil
 }

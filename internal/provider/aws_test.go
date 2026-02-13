@@ -51,9 +51,11 @@ func TestAWSProvider_ValidateConfig_MissingRegion(t *testing.T) {
 	}
 }
 
-func TestAWSProvider_CreateInfrastructure_NotImplemented(t *testing.T) {
+func TestAWSProvider_CreateInfrastructure_MissingName(t *testing.T) {
+	t.Skip("Requires AWS credentials and terraform - integration test")
 	p := NewAWSProvider()
 	cfg := &config.ClusterConfig{
+		Name:     "", // Missing name should cause validation error
 		Provider: config.ProviderConfig{Type: "aws", Region: "us-east-1"},
 		Nodes: config.NodesConfig{
 			ControlPlane: config.NodeGroupConfig{Count: 1},
@@ -62,34 +64,45 @@ func TestAWSProvider_CreateInfrastructure_NotImplemented(t *testing.T) {
 	}
 	err := p.CreateInfrastructure(cfg)
 	if err == nil {
-		t.Error("expected not-implemented error")
+		t.Error("expected error for missing cluster name")
 	}
 }
 
-func TestAWSProvider_DestroyInfrastructure_NotImplemented(t *testing.T) {
+func TestAWSProvider_DestroyInfrastructure_NoState(t *testing.T) {
 	p := NewAWSProvider()
-	cfg := &config.ClusterConfig{}
+	cfg := &config.ClusterConfig{
+		Name:     "nonexistent-cluster",
+		Provider: config.ProviderConfig{Type: "aws", Region: "us-east-1"},
+	}
+	// Should succeed even if no state exists (idempotent)
 	err := p.DestroyInfrastructure(cfg)
-	if err == nil {
-		t.Error("expected not-implemented error")
+	if err != nil {
+		t.Errorf("expected no error for nonexistent state, got: %v", err)
 	}
 }
 
-func TestAWSProvider_GetKubeconfig_NotImplemented(t *testing.T) {
+func TestAWSProvider_GetKubeconfig_MissingCluster(t *testing.T) {
 	p := NewAWSProvider()
-	cfg := &config.ClusterConfig{}
+	cfg := &config.ClusterConfig{
+		Name:     "nonexistent-cluster",
+		Provider: config.ProviderConfig{Type: "aws", Region: "us-east-1"},
+	}
 	_, err := p.GetKubeconfig(cfg)
 	if err == nil {
-		t.Error("expected not-implemented error")
+		t.Error("expected error for nonexistent cluster")
 	}
 }
 
-func TestAWSProvider_GetStatus_NotImplemented(t *testing.T) {
+func TestAWSProvider_GetStatus_MissingWorkDir(t *testing.T) {
 	p := NewAWSProvider()
-	cfg := &config.ClusterConfig{}
+	cfg := &config.ClusterConfig{
+		Name:     "nonexistent-cluster",
+		Provider: config.ProviderConfig{Type: "aws", Region: "us-east-1"},
+	}
 	status, err := p.GetStatus(cfg)
-	if err == nil {
-		t.Error("expected not-implemented error")
+	// Should return unknown status when working directory doesn't exist
+	if err != nil {
+		t.Errorf("expected no error, got: %v", err)
 	}
 	if status != "unknown" {
 		t.Errorf("expected status 'unknown', got %q", status)

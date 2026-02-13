@@ -210,6 +210,18 @@ tdls-easy-k8s gitops setup --repo=github.com/youruser/cluster-gitops
 tdls-easy-k8s app add myapp --chart=mycompany/myapp --namespace=production
 ```
 
+### 8. Clean Up
+
+When you're done with the cluster:
+
+```bash
+# Destroy infrastructure (with confirmation prompt)
+./bin/tdls-easy-k8s destroy --cluster=production
+
+# Or destroy everything including local files
+./bin/tdls-easy-k8s destroy --cluster=production --cleanup --force
+```
+
 ## Configuration
 
 See [examples/cluster.yaml](examples/cluster.yaml) for a complete configuration example.
@@ -411,6 +423,34 @@ Passed:   6
 Cluster is healthy and ready for workload deployment!
 ```
 
+### `tdls-easy-k8s destroy`
+
+Destroy a cluster and all associated infrastructure.
+
+```bash
+# Destroy with confirmation prompt
+tdls-easy-k8s destroy --cluster=production
+
+# Destroy without confirmation (use with caution!)
+tdls-easy-k8s destroy --cluster=dev --force
+
+# Destroy and cleanup all local files and S3 bucket
+tdls-easy-k8s destroy --cluster=dev --force --cleanup
+```
+
+**What gets destroyed:**
+- All EC2 instances (control plane and workers)
+- VPC and networking components (subnets, NAT gateways, IGW, route tables)
+- Network Load Balancer and target groups
+- EBS volumes (including etcd data)
+- Security groups and IAM roles/policies
+- With `--cleanup`: S3 bucket and local terraform state files
+
+**Safety features:**
+- Requires typing cluster name to confirm (unless `--force`)
+- Shows detailed list of resources to be destroyed
+- Irreversible operation - use with caution
+
 ### `tdls-easy-k8s version`
 
 Display version information.
@@ -593,11 +633,11 @@ tofu output
 - [x] **Kubeconfig automation** (`kubeconfig` command with kubectl integration)
 - [x] **Cluster status monitoring** (`status` command for quick health checks)
 - [x] **Comprehensive validation** (`validate` command with 7 health checks)
+- [x] **Cluster destroy command** (`destroy` command with safety confirmations and cleanup options)
 
 ### In Progress 🚧
 - [ ] Flux GitOps setup
 - [ ] GitOps template generation
-- [ ] Cluster destroy command
 
 ### Planned 📋
 - [ ] S3 backend for OpenTofu state (with DynamoDB locking)

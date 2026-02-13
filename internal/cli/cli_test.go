@@ -22,7 +22,7 @@ func TestRootCommand_HasSubcommands(t *testing.T) {
 		names[cmd.Name()] = true
 	}
 
-	expected := []string{"init", "gitops", "app", "version"}
+	expected := []string{"init", "gitops", "app", "version", "destroy", "status", "validate", "kubeconfig"}
 	for _, name := range expected {
 		if !names[name] {
 			t.Errorf("expected subcommand %q to be registered", name)
@@ -163,5 +163,100 @@ func TestAppCommand_HasAddSubcommand(t *testing.T) {
 	}
 	if !found {
 		t.Error("expected 'add' subcommand under 'app'")
+	}
+}
+
+func TestDestroyCommand_HasFlags(t *testing.T) {
+	flags := destroyCmd.Flags()
+
+	cases := []struct {
+		name     string
+		defValue string
+	}{
+		{"cluster", ""},
+		{"force", "false"},
+		{"cleanup", "false"},
+	}
+
+	for _, tc := range cases {
+		f := flags.Lookup(tc.name)
+		if f == nil {
+			t.Errorf("expected flag %q to exist", tc.name)
+			continue
+		}
+		if f.DefValue != tc.defValue {
+			t.Errorf("flag %q: expected default %q, got %q", tc.name, tc.defValue, f.DefValue)
+		}
+	}
+}
+
+func TestStatusCommand_HasFlags(t *testing.T) {
+	flags := statusCmd.Flags()
+
+	cases := []struct {
+		name     string
+		defValue string
+	}{
+		{"cluster", ""},
+		{"watch", "false"},
+	}
+
+	for _, tc := range cases {
+		f := flags.Lookup(tc.name)
+		if f == nil {
+			t.Errorf("expected flag %q to exist", tc.name)
+			continue
+		}
+		if f.DefValue != tc.defValue {
+			t.Errorf("flag %q: expected default %q, got %q", tc.name, tc.defValue, f.DefValue)
+		}
+	}
+}
+
+func TestValidateCommand_HasFlags(t *testing.T) {
+	flags := validateCmd.Flags()
+
+	cases := []struct {
+		name     string
+		defValue string
+	}{
+		{"cluster", ""},
+		{"quick", "false"},
+	}
+
+	for _, tc := range cases {
+		f := flags.Lookup(tc.name)
+		if f == nil {
+			t.Errorf("expected flag %q to exist", tc.name)
+			continue
+		}
+		if f.DefValue != tc.defValue {
+			t.Errorf("flag %q: expected default %q, got %q", tc.name, tc.defValue, f.DefValue)
+		}
+	}
+}
+
+func TestKubeconfigCommand_HasFlags(t *testing.T) {
+	flags := kubeconfigCmd.Flags()
+
+	cases := []struct {
+		name     string
+		defValue string
+	}{
+		{"cluster", ""},
+		{"output", "./kubeconfig"},
+		{"merge", "false"},
+		{"set-context", "false"},
+	}
+
+	for _, tc := range cases {
+		f := flags.Lookup(tc.name)
+		if f == nil {
+			t.Errorf("expected flag %q to exist", tc.name)
+			continue
+		}
+		if f.DefValue != tc.defValue {
+			t.Errorf("flag %q: expected default %q, got %q", tc.name, tc.defValue, f.DefValue)
+		}
 	}
 }
