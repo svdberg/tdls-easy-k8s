@@ -55,6 +55,7 @@ type GitOpsConfig struct {
 	Enabled    bool   `yaml:"enabled"`
 	Repository string `yaml:"repository"` // e.g., github.com/user/cluster-gitops
 	Branch     string `yaml:"branch"`
+	Path       string `yaml:"path"` // Path in repository, e.g., clusters/production
 }
 
 // ComponentsConfig contains configuration for cluster components

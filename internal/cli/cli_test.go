@@ -236,6 +236,55 @@ func TestValidateCommand_HasFlags(t *testing.T) {
 	}
 }
 
+func TestGenerateGitRepositoryYAML(t *testing.T) {
+	yaml := generateGitRepositoryYAML("https://github.com/user/repo.git", "main")
+
+	expected := []string{
+		"kind: GitRepository",
+		"namespace: flux-system",
+		"branch: main",
+		"url: https://github.com/user/repo.git",
+		"apiVersion: source.toolkit.fluxcd.io/v1",
+	}
+	for _, s := range expected {
+		if !strings.Contains(yaml, s) {
+			t.Errorf("expected YAML to contain %q, got:\n%s", s, yaml)
+		}
+	}
+}
+
+func TestGenerateKustomizationYAML_NoDependency(t *testing.T) {
+	yaml := generateKustomizationYAML("infrastructure", "clusters/production/infrastructure", "")
+
+	expected := []string{
+		"kind: Kustomization",
+		"name: infrastructure",
+		"namespace: flux-system",
+		"path: ./clusters/production/infrastructure",
+		"apiVersion: kustomize.toolkit.fluxcd.io/v1",
+		"prune: true",
+	}
+	for _, s := range expected {
+		if !strings.Contains(yaml, s) {
+			t.Errorf("expected YAML to contain %q, got:\n%s", s, yaml)
+		}
+	}
+	if strings.Contains(yaml, "dependsOn") {
+		t.Errorf("expected no dependsOn block, got:\n%s", yaml)
+	}
+}
+
+func TestGenerateKustomizationYAML_WithDependency(t *testing.T) {
+	yaml := generateKustomizationYAML("apps", "clusters/production/apps", "infrastructure")
+
+	if !strings.Contains(yaml, "dependsOn") {
+		t.Errorf("expected dependsOn block, got:\n%s", yaml)
+	}
+	if !strings.Contains(yaml, "name: infrastructure") {
+		t.Errorf("expected dependency on infrastructure, got:\n%s", yaml)
+	}
+}
+
 func TestKubeconfigCommand_HasFlags(t *testing.T) {
 	flags := kubeconfigCmd.Flags()
 

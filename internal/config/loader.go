@@ -50,6 +50,9 @@ func applyDefaults(config *ClusterConfig) {
 	if config.GitOps.Branch == "" {
 		config.GitOps.Branch = "main"
 	}
+	if config.GitOps.Path == "" {
+		config.GitOps.Path = "clusters/production"
+	}
 
 	// Node defaults
 	if config.Nodes.ControlPlane.InstanceType == "" {
