@@ -65,7 +65,7 @@ variable "rke2_version" {
 }
 
 variable "cni_plugin" {
-  description = "CNI plugin (cilium, canal, calico)"
+  description = "CNI plugin (canal, calico, cilium)"
   type        = string
 }
 

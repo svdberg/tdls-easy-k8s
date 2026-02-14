@@ -248,13 +248,13 @@ variable "cluster_token" {
 }
 
 variable "cni_plugin" {
-  description = "CNI plugin (cilium, canal, calico)"
+  description = "CNI plugin (canal, calico, cilium)"
   type        = string
-  default     = "cilium"
+  default     = "canal"
 
   validation {
-    condition     = contains(["cilium", "canal", "calico"], var.cni_plugin)
-    error_message = "CNI plugin must be one of: cilium, canal, calico."
+    condition     = contains(["canal", "calico", "cilium"], var.cni_plugin)
+    error_message = "CNI plugin must be one of: canal, calico, cilium."
   }
 }
 

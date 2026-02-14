@@ -372,7 +372,7 @@ Nodes:
 
 System Components:
   ✓ coredns            2/2 running
-  ✓ cilium             6/6 running
+  ✓ canal              6/6 running
   ✓ kube-apiserver     3/3 running
   ✓ etcd               3/3 running
 
@@ -412,7 +412,7 @@ Checking DNS resolution...
   ✓ DNS is working (2 pods running)
 
 Checking Pod networking...
-  ✓ Pod networking is operational (6 Cilium pods running)
+  ✓ Pod networking is operational (6 Canal pods running)
 
 ═══════════════════════════════════════════
 Validation Summary (8 seconds elapsed)
