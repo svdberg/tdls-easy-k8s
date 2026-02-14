@@ -22,7 +22,7 @@ func TestRootCommand_HasSubcommands(t *testing.T) {
 		names[cmd.Name()] = true
 	}
 
-	expected := []string{"init", "gitops", "app", "version", "destroy", "status", "validate", "kubeconfig"}
+	expected := []string{"init", "gitops", "app", "version", "destroy", "status", "validate", "kubeconfig", "monitor"}
 	for _, name := range expected {
 		if !names[name] {
 			t.Errorf("expected subcommand %q to be registered", name)
@@ -422,6 +422,46 @@ func TestGenerateKustomizationYAML_WithDependency(t *testing.T) {
 	}
 	if !strings.Contains(yaml, "name: infrastructure") {
 		t.Errorf("expected dependency on infrastructure, got:\n%s", yaml)
+	}
+}
+
+func TestMonitorCommand_HasFlags(t *testing.T) {
+	flags := monitorCmd.Flags()
+
+	cases := []struct {
+		name     string
+		defValue string
+	}{
+		{"cluster", ""},
+	}
+
+	for _, tc := range cases {
+		f := flags.Lookup(tc.name)
+		if f == nil {
+			t.Errorf("expected flag %q to exist", tc.name)
+			continue
+		}
+		if f.DefValue != tc.defValue {
+			t.Errorf("flag %q: expected default %q, got %q", tc.name, tc.defValue, f.DefValue)
+		}
+	}
+}
+
+func TestTitleCase(t *testing.T) {
+	cases := []struct {
+		input string
+		want  string
+	}{
+		{"linux", "Linux"},
+		{"darwin", "Darwin"},
+		{"", ""},
+	}
+
+	for _, tc := range cases {
+		got := titleCase(tc.input)
+		if got != tc.want {
+			t.Errorf("titleCase(%q) = %q, want %q", tc.input, got, tc.want)
+		}
 	}
 }
 
