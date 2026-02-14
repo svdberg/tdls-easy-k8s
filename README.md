@@ -18,6 +18,7 @@ Easy Kubernetes cluster management for non-expert engineers.
 - **Cost-Optimized**: Options for single NAT gateway, spot instances, VPC endpoints
 - **GitOps Ready**: Built-in Flux integration for GitOps workflows
 - **Simple Configuration**: YAML-based configuration files
+- **Cluster Monitoring**: One-command k9s launch with automatic installation
 - **Easy to Use**: Simple CLI commands for cluster lifecycle management
 
 ## Architecture
@@ -207,7 +208,10 @@ tdls-easy-k8s gitops setup --repo=github.com/youruser/cluster-gitops
 ### 7. (Optional) Add Applications
 
 ```bash
-tdls-easy-k8s app add myapp --chart=mycompany/myapp --namespace=production
+tdls-easy-k8s app add myapp \
+  --chart=mycompany/myapp \
+  --repo-url=https://charts.mycompany.com \
+  --namespace=production
 ```
 
 ### 8. Clean Up
@@ -325,10 +329,48 @@ tdls-easy-k8s gitops setup --repo=github.com/user/cluster-gitops --branch=main
 
 ### `tdls-easy-k8s app add`
 
-Add a new application to the cluster via GitOps.
+Add a new application to the cluster via GitOps. Generates Flux CD manifests
+(Kustomization CRD, HelmRepository, HelmRelease) for deploying an application
+using the app-of-apps pattern.
+
+**Flags:**
+
+| Flag | Required | Default | Description |
+|------|----------|---------|-------------|
+| `--chart` | Yes | | Helm chart in `reponame/chartname` format |
+| `--repo-url` | Yes | | Helm repository URL |
+| `--namespace` | No | `default` | Target Kubernetes namespace |
+| `--version` | No | `*` | Chart version constraint |
+| `--values` | No | | Path to Helm values YAML file |
+| `--layer` | No | `apps` | Target layer: `apps` or `infrastructure` |
+| `--output-dir` | No | | Path to local gitops repo root (prints to stdout if omitted) |
+| `--gitops-path` | No | `clusters/production` | Path within repo for Kustomization CRDs |
+| `--depends-on` | No | | Name of another app this one depends on |
+
+**Examples:**
 
 ```bash
-tdls-easy-k8s app add myapp --chart=mycompany/myapp --namespace=production
+# Print generated manifests to stdout (for review or piping)
+tdls-easy-k8s app add nginx \
+  --chart=bitnami/nginx \
+  --repo-url=https://charts.bitnami.com/bitnami \
+  --namespace=web
+
+# Write files directly to a local gitops repository
+tdls-easy-k8s app add nginx \
+  --chart=bitnami/nginx \
+  --repo-url=https://charts.bitnami.com/bitnami \
+  --namespace=web \
+  --output-dir=~/gitops-repo
+
+# Deploy with a specific version, custom values, and dependency ordering
+tdls-easy-k8s app add my-api \
+  --chart=mycompany/my-api \
+  --repo-url=https://charts.mycompany.com \
+  --namespace=production \
+  --version=1.2.3 \
+  --values=./my-api-values.yaml \
+  --depends-on=redis
 ```
 
 ### `tdls-easy-k8s kubeconfig`
@@ -450,6 +492,17 @@ tdls-easy-k8s destroy --cluster=dev --force --cleanup
 - Requires typing cluster name to confirm (unless `--force`)
 - Shows detailed list of resources to be destroyed
 - Irreversible operation - use with caution
+
+### `tdls-easy-k8s monitor`
+
+Launch k9s terminal UI for cluster monitoring. k9s is automatically installed if not found.
+
+```bash
+# Launch k9s for a cluster
+tdls-easy-k8s monitor --cluster=production
+```
+
+k9s will be downloaded from GitHub releases and installed to `~/.tdls-k8s/bin/k9s` if not already available in your PATH.
 
 ### `tdls-easy-k8s version`
 
@@ -634,10 +687,12 @@ tofu output
 - [x] **Cluster status monitoring** (`status` command for quick health checks)
 - [x] **Comprehensive validation** (`validate` command with 7 health checks)
 - [x] **Cluster destroy command** (`destroy` command with safety confirmations and cleanup options)
-
-### In Progress 🚧
-- [ ] Flux GitOps setup
-- [ ] GitOps template generation
+- [x] **Flux GitOps setup** (`gitops setup` command with Flux CD installation and repository configuration)
+- [x] **GitOps template generation** (Kustomization, HelmRepository, HelmRelease manifests)
+- [x] **Application deployment** (`app add` command with Helm chart support and dependency ordering)
+- [x] **Unit tests** (CLI commands, flags, YAML generation)
+- [x] **CI/CD pipeline** (GitHub Actions: fmt, vet, test, build)
+- [x] **Cluster monitoring** (`monitor` command with k9s auto-installation)
 
 ### Planned 📋
 - [ ] S3 backend for OpenTofu state (with DynamoDB locking)
@@ -649,9 +704,7 @@ tofu output
 - [ ] Auto-scaling worker groups
 - [ ] Backup and restore functionality
 - [ ] Cost estimation before deployment
-- [ ] Unit tests
 - [ ] Integration tests
-- [ ] CI/CD pipeline
 
 ## Contributing
 
