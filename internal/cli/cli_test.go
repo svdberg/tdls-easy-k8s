@@ -124,6 +124,12 @@ func TestAppAddCommand_HasFlags(t *testing.T) {
 		{"chart", ""},
 		{"values", ""},
 		{"namespace", "default"},
+		{"repo-url", ""},
+		{"version", "*"},
+		{"layer", "apps"},
+		{"output-dir", ""},
+		{"gitops-path", "clusters/production"},
+		{"depends-on", ""},
 	}
 
 	for _, tc := range cases {
@@ -135,6 +141,140 @@ func TestAppAddCommand_HasFlags(t *testing.T) {
 		if f.DefValue != tc.defValue {
 			t.Errorf("flag %q: expected default %q, got %q", tc.name, tc.defValue, f.DefValue)
 		}
+	}
+}
+
+func TestParseChartReference(t *testing.T) {
+	cases := []struct {
+		input     string
+		wantRepo  string
+		wantChart string
+		wantErr   bool
+	}{
+		{"bitnami/nginx", "bitnami", "nginx", false},
+		{"mycompany/myapp", "mycompany", "myapp", false},
+		{"noseparator", "", "", true},
+		{"too/many/slashes", "", "", true},
+		{"/empty-repo", "", "", true},
+		{"empty-chart/", "", "", true},
+	}
+
+	for _, tc := range cases {
+		repo, chart, err := parseChartReference(tc.input)
+		if tc.wantErr {
+			if err == nil {
+				t.Errorf("parseChartReference(%q): expected error, got repo=%q chart=%q", tc.input, repo, chart)
+			}
+			continue
+		}
+		if err != nil {
+			t.Errorf("parseChartReference(%q): unexpected error: %v", tc.input, err)
+			continue
+		}
+		if repo != tc.wantRepo {
+			t.Errorf("parseChartReference(%q): repo = %q, want %q", tc.input, repo, tc.wantRepo)
+		}
+		if chart != tc.wantChart {
+			t.Errorf("parseChartReference(%q): chart = %q, want %q", tc.input, chart, tc.wantChart)
+		}
+	}
+}
+
+func TestGenerateAppKustomizationYAML_NoDependency(t *testing.T) {
+	yaml := generateAppKustomizationYAML("my-api", "apps", "")
+
+	expected := []string{
+		"apiVersion: kustomize.toolkit.fluxcd.io/v1",
+		"kind: Kustomization",
+		"name: my-api",
+		"namespace: flux-system",
+		"path: ./apps/my-api",
+		"prune: true",
+		"wait: true",
+	}
+	for _, s := range expected {
+		if !strings.Contains(yaml, s) {
+			t.Errorf("expected YAML to contain %q, got:\n%s", s, yaml)
+		}
+	}
+	if strings.Contains(yaml, "dependsOn") {
+		t.Errorf("expected no dependsOn block, got:\n%s", yaml)
+	}
+}
+
+func TestGenerateAppKustomizationYAML_WithDependency(t *testing.T) {
+	yaml := generateAppKustomizationYAML("my-api", "apps", "redis")
+
+	if !strings.Contains(yaml, "dependsOn") {
+		t.Errorf("expected dependsOn block, got:\n%s", yaml)
+	}
+	if !strings.Contains(yaml, "name: redis") {
+		t.Errorf("expected dependency on redis, got:\n%s", yaml)
+	}
+	if !strings.Contains(yaml, "path: ./apps/my-api") {
+		t.Errorf("expected path ./apps/my-api, got:\n%s", yaml)
+	}
+}
+
+func TestGenerateHelmRepositoryYAML(t *testing.T) {
+	yaml := generateHelmRepositoryYAML("bitnami", "https://charts.bitnami.com/bitnami")
+
+	expected := []string{
+		"apiVersion: source.toolkit.fluxcd.io/v1",
+		"kind: HelmRepository",
+		"name: bitnami",
+		"namespace: flux-system",
+		"interval: 1h0m0s",
+		"url: https://charts.bitnami.com/bitnami",
+	}
+	for _, s := range expected {
+		if !strings.Contains(yaml, s) {
+			t.Errorf("expected YAML to contain %q, got:\n%s", s, yaml)
+		}
+	}
+}
+
+func TestGenerateHelmReleaseYAML_NoValues(t *testing.T) {
+	yaml := generateHelmReleaseYAML("my-api", "default", "nginx", "bitnami", "*", "")
+
+	expected := []string{
+		"apiVersion: helm.toolkit.fluxcd.io/v2",
+		"kind: HelmRelease",
+		"name: my-api",
+		"namespace: default",
+		"chart: nginx",
+		`version: "*"`,
+		"name: bitnami",
+		"namespace: flux-system",
+	}
+	for _, s := range expected {
+		if !strings.Contains(yaml, s) {
+			t.Errorf("expected YAML to contain %q, got:\n%s", s, yaml)
+		}
+	}
+	if strings.Contains(yaml, "values:") {
+		t.Errorf("expected no values block, got:\n%s", yaml)
+	}
+}
+
+func TestGenerateHelmReleaseYAML_WithValues(t *testing.T) {
+	values := "replicaCount: 3\nimage:\n  tag: latest"
+	yaml := generateHelmReleaseYAML("my-api", "production", "nginx", "bitnami", "1.2.3", values)
+
+	if !strings.Contains(yaml, "values:") {
+		t.Errorf("expected values block, got:\n%s", yaml)
+	}
+	if !strings.Contains(yaml, "replicaCount: 3") {
+		t.Errorf("expected replicaCount in values, got:\n%s", yaml)
+	}
+	if !strings.Contains(yaml, "tag: latest") {
+		t.Errorf("expected image tag in values, got:\n%s", yaml)
+	}
+	if !strings.Contains(yaml, `version: "1.2.3"`) {
+		t.Errorf("expected version 1.2.3, got:\n%s", yaml)
+	}
+	if !strings.Contains(yaml, "namespace: production") {
+		t.Errorf("expected namespace production, got:\n%s", yaml)
 	}
 }
 
