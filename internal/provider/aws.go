@@ -899,8 +899,8 @@ func (p *AWSProvider) GetClusterStatus(cfg *config.ClusterConfig) (*ClusterStatu
 				component := "other"
 				if strings.Contains(name, "coredns") {
 					component = "coredns"
-				} else if strings.Contains(name, "cilium") {
-					component = "cilium"
+				} else if strings.Contains(name, "canal") {
+					component = "canal"
 				} else if strings.Contains(name, "etcd") {
 					component = "etcd"
 				} else if strings.Contains(name, "kube-apiserver") {
@@ -1189,8 +1189,8 @@ func (p *AWSProvider) ValidateNetworking(cfg *config.ClusterConfig) (string, err
 	}
 	defer os.Remove(kubeconfigPath)
 
-	// Check CNI pods (Cilium)
-	cmd := exec.Command("kubectl", "get", "pods", "-n", "kube-system", "-l", "k8s-app=cilium", "-o", "json")
+	// Check CNI pods (Canal)
+	cmd := exec.Command("kubectl", "get", "pods", "-n", "kube-system", "-l", "k8s-app=canal", "-o", "json")
 	cmd.Env = append(os.Environ(), fmt.Sprintf("KUBECONFIG=%s", kubeconfigPath))
 	output, err := cmd.Output()
 	if err != nil {
@@ -1220,7 +1220,7 @@ func (p *AWSProvider) ValidateNetworking(cfg *config.ClusterConfig) (string, err
 		return "", fmt.Errorf("no CNI pods running")
 	}
 
-	return fmt.Sprintf("Pod networking is operational (%d Cilium pods running)", running), nil
+	return fmt.Sprintf("Pod networking is operational (%d Canal pods running)", running), nil
 }
 
 // ValidatePodScheduling checks if pods can be scheduled
