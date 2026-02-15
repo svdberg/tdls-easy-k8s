@@ -4,18 +4,16 @@ Easy Kubernetes cluster management for non-expert engineers.
 
 ## Overview
 
-`tdls-easy-k8s` is a CLI tool that simplifies the deployment and management of production-ready Kubernetes clusters across multiple cloud providers (AWS, vSphere). It uses OpenTofu for infrastructure provisioning, automatically installs RKE2 via cloud-init, and provides GitOps-compliant workflows with built-in support for Traefik, Vault, and External Secrets.
+`tdls-easy-k8s` is a CLI tool that simplifies the deployment and management of production-ready Kubernetes clusters across multiple cloud providers (AWS, Hetzner Cloud). It uses OpenTofu for infrastructure provisioning, automatically installs RKE2 via cloud-init, and provides GitOps-compliant workflows with built-in support for Traefik, Vault, and External Secrets.
 
 ## Features
 
-- **Production-Ready AWS Infrastructure**: Multi-AZ deployment with HA, private/public subnet split, Network Load Balancer
+- **Multi-Cloud Support**: Deploy on AWS or Hetzner Cloud with a unified CLI
+- **Production-Ready Infrastructure**: HA deployments with load balancers, firewalls, and private networking
 - **Automated RKE2 Installation**: Cloud-init scripts handle complete cluster bootstrap
-- **Automatic TLS Certificate Management**: Two-phase deployment ensures NLB DNS is included in API server certificates
 - **OpenTofu-Based**: Uses open-source OpenTofu for infrastructure as code
-- **Security-First**: Encrypted EBS volumes, strict security groups, IAM least privilege, AWS Session Manager
 - **User-Friendly Validation**: Built-in `status` and `validate` commands for non-expert engineers
 - **Automated Kubeconfig Management**: One command to download and configure cluster access
-- **Cost-Optimized**: Options for single NAT gateway, spot instances, VPC endpoints
 - **GitOps Ready**: Built-in Flux integration for GitOps workflows
 - **Simple Configuration**: YAML-based configuration files
 - **Cluster Monitoring**: One-command k9s launch with automatic installation
@@ -26,29 +24,29 @@ Easy Kubernetes cluster management for non-expert engineers.
 ### High-Level Architecture
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                   tdls-easy-k8s CLI                     │
-└────────────────┬────────────────────────────────────────┘
-                 │
-        ┌────────┴──────────┐
-        │                   │
-   ┌────▼─────┐      ┌─────▼──────┐
-   │   AWS    │      │  vSphere   │
-   │ Provider │      │  Provider  │
-   └────┬─────┘      └─────┬──────┘
-        │                  │
-   ┌────▼──────────────────▼─────┐
-   │      OpenTofu Modules       │
-   └────┬────────────────────────┘
-        │
-   ┌────▼─────────────────────────┐
-   │   Kubernetes Cluster (RKE2)  │
-   │  ┌────────────────────────┐  │
-   │  │  Flux (GitOps)         │  │
-   │  │  Traefik (Ingress)     │  │
-   │  │  External Secrets      │  │
-   │  └────────────────────────┘  │
-   └──────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│                        tdls-easy-k8s CLI                         │
+└──────────────────────────┬───────────────────────────────────────┘
+                           │
+              ┌────────────┼────────────┐
+              │            │            │
+         ┌────▼─────┐ ┌───▼────┐ ┌─────▼──────┐
+         │   AWS    │ │Hetzner │ │  vSphere   │
+         │ Provider │ │Provider│ │  (stub)    │
+         └────┬─────┘ └───┬────┘ └────────────┘
+              │           │
+         ┌────▼───────────▼──────┐
+         │    OpenTofu Modules   │
+         └────┬──────────────────┘
+              │
+         ┌────▼─────────────────────────┐
+         │   Kubernetes Cluster (RKE2)  │
+         │  ┌────────────────────────┐  │
+         │  │  Flux (GitOps)         │  │
+         │  │  Traefik (Ingress)     │  │
+         │  │  External Secrets      │  │
+         │  └────────────────────────┘  │
+         └──────────────────────────────┘
 ```
 
 ### AWS Infrastructure Details
@@ -89,11 +87,53 @@ Easy Kubernetes cluster management for non-expert engineers.
 - **EBS Volumes**: Dedicated GP3 volumes for etcd with encryption
 - **VPC Endpoints**: S3 and ECR for reduced data transfer costs
 
+### Hetzner Cloud Infrastructure Details
+
+```
+┌──────── Private Network (10.0.0.0/16) ────────┐
+│                                                 │
+│  ┌───────────────────────────────────────────┐  │
+│  │         Load Balancer (lb11)              │  │
+│  │   Kubernetes API (6443) + RKE2 (9345)    │  │
+│  └───────────────────────────────────────────┘  │
+│                                                 │
+│  ┌──────── Subnet 10.0.1.0/24 ───────────────┐ │
+│  │                                            │ │
+│  │  ┌─────────────────┐                      │ │
+│  │  │ Control Plane 0 │  cpx22 (2C/4GB)     │ │
+│  │  │   (bootstrap)   │                      │ │
+│  │  └─────────────────┘                      │ │
+│  │                                            │ │
+│  │  ┌─────────────────┐ ┌─────────────────┐  │ │
+│  │  │   Worker 0      │ │   Worker 1      │  │ │
+│  │  │ cpx32 (4C/8GB)  │ │ cpx32 (4C/8GB)  │  │ │
+│  │  └─────────────────┘ └─────────────────┘  │ │
+│  └────────────────────────────────────────────┘ │
+│                                                 │
+│  ┌── Firewall ──────────────────────────────┐   │
+│  │  22, 6443, 9345, 80, 443 (public)       │   │
+│  │  10250, 2379-2381, 8472 (private net)   │   │
+│  └──────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────┘
+```
+
+**Key differences from AWS:**
+- **Simpler networking**: Flat private network with a single subnet (no NAT gateways)
+- **LB created first**: Load balancer IP is known before servers boot, so TLS certificates include it from the start (no multi-phase deployment)
+- **SSH-based kubeconfig**: Retrieved via SSH from the control plane node (no S3 bucket needed)
+- **API token auth**: Uses `HCLOUD_TOKEN` environment variable (no IAM roles)
+- **Locations**: fsn1 (Falkenstein), nbg1 (Nuremberg), hel1 (Helsinki), ash (Ashburn), hil (Hillsboro)
+
 ## Prerequisites
 
 - **OpenTofu** >= 1.6.0 ([Installation guide](https://opentofu.org/docs/intro/install/))
-- **AWS CLI** configured with credentials
 - **Go** >= 1.24 (for building from source)
+
+**For AWS:**
+- AWS CLI configured with credentials (`aws configure`)
+
+**For Hetzner Cloud:**
+- Hetzner Cloud API token (`export HCLOUD_TOKEN=<your-token>`)
 
 ```bash
 # Install OpenTofu (macOS)
@@ -101,9 +141,6 @@ brew install opentofu
 
 # Install OpenTofu (Linux)
 # See https://opentofu.org/docs/intro/install/
-
-# Configure AWS credentials
-aws configure
 ```
 
 ## Installation
@@ -131,14 +168,18 @@ make build
 ### 1. Review the Example Configuration
 
 ```bash
+# AWS example
 cat examples/cluster.yaml
+
+# Hetzner Cloud example
+cat examples/cluster-hetzner.yaml
 ```
 
 ### 2. Create Your Cluster Configuration
 
 ```bash
-# Copy and edit the example
-cp examples/cluster.yaml my-cluster.yaml
+# Copy and edit an example
+cp examples/cluster-hetzner.yaml my-cluster.yaml
 vim my-cluster.yaml
 
 # Or generate a new one
@@ -147,28 +188,19 @@ tdls-easy-k8s init --generate-config > my-cluster.yaml
 
 Key settings to customize:
 - `name`: Your cluster name
-- `provider.region`: AWS region (e.g., us-east-1)
+- `provider.type`: Cloud provider (`aws` or `hetzner`)
+- `provider.region` / `provider.location`: Where to deploy
 - `nodes.controlPlane.count`: Number of control plane nodes (must be odd: 1, 3, 5)
 - `nodes.workers.count`: Number of worker nodes
-- `nodes.*.instanceType`: EC2 instance types
+- `nodes.*.instanceType`: Instance types (e.g., `t3.medium` for AWS, `cpx22` for Hetzner)
 
 ### 3. Create the Cluster
 
 ```bash
-# This will:
-# - Create S3 bucket for kubeconfig storage
-# - Create OpenTofu working directory (~/.tdls-k8s/clusters/<name>/terraform)
-# - Generate terraform.tfvars.json from your config
-# - Run: tofu init, plan, and apply
-# - Deploy AWS infrastructure (VPC, EC2, NLB, etc.)
-# - Install RKE2 automatically via cloud-init
-# - Update TLS certificates with NLB DNS (Phase 2)
-# - Upload kubeconfig to S3
-
 ./bin/tdls-easy-k8s init --config=my-cluster.yaml
 ```
 
-This typically takes **15-20 minutes** to complete (including TLS certificate updates).
+This provisions infrastructure via OpenTofu, installs RKE2 via cloud-init, and configures the cluster. Typical deploy time: **5-10 minutes** (Hetzner) or **15-20 minutes** (AWS).
 
 ### 4. Access Your Cluster
 
@@ -228,7 +260,7 @@ When you're done with the cluster:
 
 ## Configuration
 
-See [examples/cluster.yaml](examples/cluster.yaml) for a complete configuration example.
+See [examples/cluster.yaml](examples/cluster.yaml) (AWS) and [examples/cluster-hetzner.yaml](examples/cluster-hetzner.yaml) (Hetzner) for complete configuration examples.
 
 ### Minimal AWS Configuration
 
@@ -251,7 +283,34 @@ nodes:
   workers:
     count: 3
     instanceType: t3.large
+```
 
+### Minimal Hetzner Cloud Configuration
+
+```yaml
+name: my-cluster
+provider:
+  type: hetzner
+  location: nbg1    # Nuremberg (options: fsn1, nbg1, hel1, ash, hil)
+  vpc:
+    cidr: 10.0.0.0/16
+
+kubernetes:
+  version: "1.30"
+  distribution: rke2
+
+nodes:
+  controlPlane:
+    count: 1
+    instanceType: cpx22    # 2 vCPU AMD, 4 GB RAM
+  workers:
+    count: 2
+    instanceType: cpx32    # 4 vCPU AMD, 8 GB RAM
+```
+
+### Optional Components
+
+```yaml
 gitops:
   enabled: true
   repository: github.com/user/cluster-gitops
@@ -269,38 +328,23 @@ components:
     enabled: true
 ```
 
-### Cost Optimization Options
+### Cost Estimation
 
-For development/testing, you can reduce costs by:
+**Hetzner Cloud (EU):**
+- **Dev (1 CP + 2 workers)**: ~$25/month
+  - Control plane: 1 × cpx22 = ~$5
+  - Workers: 2 × cpx32 = ~$14
+  - Load balancer (lb11): ~$6
+- **Production (3 CP + 3 workers)**: ~$55/month
 
-**Using the OpenTofu variables directly:**
-
-```bash
-cd ~/.tdls-k8s/clusters/<cluster-name>/terraform
-
-# Edit terraform.tfvars.json to add:
-{
-  "single_nat_gateway": true,        # ~$64/month savings
-  "enable_spot_instances": true,     # ~70% savings on workers
-  "worker_instance_type": "t3.small" # Smaller instances
-}
-
-# Re-apply
-tofu apply
-```
-
-**Estimated Monthly Costs (us-east-1):**
+**AWS (us-east-1):**
 - **Production (3 CP + 3 workers)**: ~$536/month
   - Control plane: 3 × t3.medium = $90
   - Workers: 3 × t3.large = $270
   - NAT Gateways (3): $96
   - NLB: $18
   - EBS + data transfer: ~$62
-
 - **Dev (single NAT, spot workers)**: ~$250/month
-  - Single NAT: $32 (vs $96)
-  - Spot workers: ~$80 (vs $270)
-  - Other: ~$138
 
 ## Commands
 
@@ -309,11 +353,12 @@ tofu apply
 Initialize a new Kubernetes cluster.
 
 ```bash
-# Initialize with flags
-tdls-easy-k8s init --provider=aws --region=us-east-1 --name=production
-
 # Initialize from config file
 tdls-easy-k8s init --config=cluster.yaml
+
+# Initialize with flags
+tdls-easy-k8s init --provider=aws --region=us-east-1 --name=production
+tdls-easy-k8s init --provider=hetzner --region=nbg1 --name=my-cluster
 
 # Generate sample config
 tdls-easy-k8s init --generate-config
@@ -481,12 +526,11 @@ tdls-easy-k8s destroy --cluster=dev --force --cleanup
 ```
 
 **What gets destroyed:**
-- All EC2 instances (control plane and workers)
-- VPC and networking components (subnets, NAT gateways, IGW, route tables)
-- Network Load Balancer and target groups
-- EBS volumes (including etcd data)
-- Security groups and IAM roles/policies
-- With `--cleanup`: S3 bucket and local terraform state files
+- All compute instances (control plane and workers)
+- Networking (VPC/subnets on AWS, private network on Hetzner)
+- Load balancers and firewall/security group rules
+- Storage volumes
+- With `--cleanup`: S3 bucket (AWS) and local terraform state files
 
 **Safety features:**
 - Requires typing cluster name to confirm (unless `--force`)
@@ -571,7 +615,7 @@ make clean
 
 ### OpenTofu Modules
 
-The AWS infrastructure is built using modular OpenTofu configurations:
+**AWS** uses modular OpenTofu configurations:
 
 - **[Networking](providers/aws/terraform/modules/networking/)**: VPC, subnets, NAT gateways, Internet Gateway, VPC endpoints
 - **[Security](providers/aws/terraform/modules/security/)**: Security groups for control plane, workers, and NLB
@@ -581,35 +625,26 @@ The AWS infrastructure is built using modular OpenTofu configurations:
 - **[Worker](providers/aws/terraform/modules/compute/worker/)**: EC2 instances with automated RKE2 agent installation
 - **[Load Balancer](providers/aws/terraform/modules/loadbalancer/)**: Network Load Balancer for Kubernetes API
 
+**Hetzner Cloud** uses a flat OpenTofu configuration (no submodules):
+
+- **[Terraform](providers/hetzner/terraform/)**: Network, firewall, load balancer, servers, SSH keys — all in a single `main.tf`
+
 ### RKE2 Installation
 
-RKE2 is installed automatically via cloud-init user-data scripts:
+RKE2 is installed automatically via cloud-init user-data scripts. The process is similar across providers:
 
-1. **First control plane node**:
-   - Installs RKE2 server
-   - Mounts dedicated etcd EBS volume
-   - Initializes cluster
-   - Uploads kubeconfig to S3
+1. **First control plane node**: Installs RKE2 server, initializes cluster
+2. **Additional control plane nodes**: Wait for first node, join cluster, maintain etcd quorum
+3. **Worker nodes**: Wait for API server, install RKE2 agent, join cluster
 
-2. **Additional control plane nodes**:
-   - Wait for first node via S3 kubeconfig
-   - Join cluster via first node's IP
-   - Maintain etcd quorum
+**Provider-specific differences:**
 
-3. **Worker nodes**:
-   - Wait for API server availability
-   - Install RKE2 agent
-   - Join cluster via NLB (or first control plane IP)
-
-### Security Features
-
-- **Encrypted EBS volumes** with KMS
-- **Private workers** with no direct internet access
-- **Strict security groups** with minimal ingress rules
-- **IAM least privilege** - separate roles for control plane and workers
-- **AWS Session Manager** - no SSH keys required
-- **VPC Flow Logs** (optional)
-- **CloudWatch Logs** for centralized logging
+| | AWS | Hetzner |
+|---|-----|---------|
+| Kubeconfig retrieval | Downloaded from S3 bucket | Retrieved via SSH from control plane |
+| TLS certificates | Multi-phase: NLB DNS added after deploy | LB IP known before servers boot |
+| Node access | AWS Session Manager (no SSH keys) | SSH with auto-generated ED25519 key |
+| etcd storage | Dedicated encrypted EBS volumes | Local disk |
 
 ## Advanced Usage
 
@@ -634,26 +669,27 @@ tofu destroy
 
 ### Accessing Cluster Nodes
 
-**Using AWS Session Manager (recommended):**
+**AWS — Using Session Manager (recommended):**
 ```bash
-# List instances
 aws ec2 describe-instances --filters "Name=tag:Cluster,Values=<cluster-name>"
-
-# Start session to control plane
 aws ssm start-session --target <instance-id>
 ```
 
-**Using SSH (if SSH key configured):**
+**Hetzner — Using SSH:**
 ```bash
-ssh -i ~/.ssh/<key-name>.pem ubuntu@<public-ip>
+# Get the SSH key from terraform output
+cd ~/.tdls-k8s/clusters/<cluster-name>/terraform
+tofu output -raw ssh_private_key > /tmp/hetzner-key && chmod 600 /tmp/hetzner-key
+
+# SSH into a node
+ssh -i /tmp/hetzner-key root@<node-ip>
 ```
 
 ### Troubleshooting
 
 **Check RKE2 installation logs:**
 ```bash
-# SSH into node
-aws ssm start-session --target <instance-id>
+# SSH into node (method depends on provider)
 
 # View installation log
 sudo tail -f /var/log/rke2-install.log
@@ -675,35 +711,26 @@ tofu output
 - [x] CLI framework with Cobra
 - [x] Provider abstraction layer
 - [x] Configuration management (YAML-based)
-- [x] OpenTofu AWS modules (networking, compute, security, IAM, storage, LB)
+- [x] **AWS provider** (VPC, EC2, NLB, IAM, EBS, S3, multi-AZ HA)
+- [x] **Hetzner Cloud provider** (network, servers, LB, firewall, SSH-based kubeconfig)
 - [x] Automated RKE2 installation via cloud-init
-- [x] Multi-AZ high availability architecture
-- [x] AWS Session Manager integration
-- [x] KMS encryption for EBS volumes
-- [x] VPC endpoints for cost optimization
-- [x] S3 bucket auto-creation for kubeconfig storage
-- [x] Two-phase TLS certificate management (NLB DNS in API certificates)
+- [x] Shared kubectl validation across providers (`common.go`)
 - [x] **Kubeconfig automation** (`kubeconfig` command with kubectl integration)
 - [x] **Cluster status monitoring** (`status` command for quick health checks)
 - [x] **Comprehensive validation** (`validate` command with 7 health checks)
-- [x] **Cluster destroy command** (`destroy` command with safety confirmations and cleanup options)
-- [x] **Flux GitOps setup** (`gitops setup` command with Flux CD installation and repository configuration)
-- [x] **GitOps template generation** (Kustomization, HelmRepository, HelmRelease manifests)
-- [x] **Application deployment** (`app add` command with Helm chart support and dependency ordering)
-- [x] **Unit tests** (CLI commands, flags, YAML generation)
-- [x] **CI/CD pipeline** (GitHub Actions: fmt, vet, test, build)
+- [x] **Cluster destroy command** (`destroy` command with provider-aware warnings)
+- [x] **Flux GitOps setup** (`gitops setup` command with Flux CD installation)
+- [x] **Application deployment** (`app add` command with Helm chart support)
 - [x] **Cluster monitoring** (`monitor` command with k9s auto-installation)
+- [x] **Unit tests** and **CI/CD pipeline** (GitHub Actions)
 
 ### Planned 📋
+- [ ] vSphere provider implementation
 - [ ] S3 backend for OpenTofu state (with DynamoDB locking)
 - [ ] Cluster upgrade automation
 - [ ] Worker node scaling command
-- [ ] Component logs viewing (`logs` command)
-- [ ] vSphere provider implementation
 - [ ] K3s support (in addition to RKE2)
-- [ ] Auto-scaling worker groups
 - [ ] Backup and restore functionality
-- [ ] Cost estimation before deployment
 - [ ] Integration tests
 
 ## Contributing
