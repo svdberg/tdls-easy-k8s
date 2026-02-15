@@ -1,0 +1,18 @@
+name: my-hetzner-cluster
+provider:
+  type: hetzner
+  location: nbg1    # Nuremberg, Germany (options: fsn1, nbg1, hel1, ash, hil)
+  vpc:
+    cidr: 10.0.0.0/16
+
+kubernetes:
+  version: "1.30"
+  distribution: rke2
+
+nodes:
+  controlPlane:
+    count: 1
+    instanceType: cpx22    # 2 vCPU AMD, 4 GB RAM
+  workers:
+    count: 2
+    instanceType: cpx32    # 4 vCPU AMD, 8 GB RAM

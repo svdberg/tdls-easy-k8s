@@ -38,7 +38,7 @@ This command will create the necessary infrastructure and install Kubernetes.`,
 func init() {
 	rootCmd.AddCommand(initCmd)
 
-	initCmd.Flags().StringVar(&providerType, "provider", "aws", "Cloud provider (aws, vsphere)")
+	initCmd.Flags().StringVar(&providerType, "provider", "aws", "Cloud provider (aws, vsphere, hetzner)")
 	initCmd.Flags().StringVar(&region, "region", "us-east-1", "Cloud provider region")
 	initCmd.Flags().StringVar(&clusterName, "name", "", "Cluster name")
 	initCmd.Flags().IntVar(&nodes, "nodes", 3, "Number of worker nodes")
@@ -153,6 +153,8 @@ func initCluster(cmd *cobra.Command) error {
 		p = provider.NewAWSProvider()
 	case "vsphere":
 		return fmt.Errorf("vSphere provider not yet implemented")
+	case "hetzner":
+		p = provider.NewHetznerProvider()
 	default:
 		return fmt.Errorf("unsupported provider: %s", cfg.Provider.Type)
 	}

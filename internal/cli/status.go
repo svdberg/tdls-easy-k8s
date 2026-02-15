@@ -62,7 +62,11 @@ func showStatus(cmd *cobra.Command) error {
 func displayStatus(p provider.Provider, cfg *config.ClusterConfig) error {
 	fmt.Printf("Cluster: %s\n", cfg.Name)
 	fmt.Printf("Provider: %s\n", cfg.Provider.Type)
-	fmt.Printf("Region: %s\n", cfg.Provider.Region)
+	if cfg.Provider.Location != "" {
+		fmt.Printf("Location: %s\n", cfg.Provider.Location)
+	} else if cfg.Provider.Region != "" {
+		fmt.Printf("Region: %s\n", cfg.Provider.Region)
+	}
 	fmt.Println()
 
 	// Get cluster status from provider
@@ -166,6 +170,8 @@ func getProvider(providerType string) (provider.Provider, error) {
 		return provider.NewAWSProvider(), nil
 	case "vsphere":
 		return nil, fmt.Errorf("vSphere provider not yet implemented")
+	case "hetzner":
+		return provider.NewHetznerProvider(), nil
 	default:
 		return nil, fmt.Errorf("unknown provider type: %s", providerType)
 	}

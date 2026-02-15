@@ -66,6 +66,8 @@ func GetProvider(providerType string) (Provider, error) {
 		return NewAWSProvider(), nil
 	case "vsphere":
 		return NewVSphereProvider(), nil
+	case "hetzner":
+		return NewHetznerProvider(), nil
 	default:
 		return nil, ErrUnsupportedProvider
 	}

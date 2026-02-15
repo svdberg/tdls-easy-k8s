@@ -23,9 +23,8 @@ var destroyCmd = &cobra.Command{
 	Long: `Destroy a Kubernetes cluster and all associated cloud infrastructure.
 
 This command will:
-  - Run OpenTofu destroy to remove all AWS resources (VPC, EC2, NLB, etc.)
+  - Run OpenTofu destroy to remove all cloud resources
   - Optionally remove local state files and working directory
-  - Optionally delete the S3 bucket (if --cleanup is specified)
 
 WARNING: This action is irreversible and will permanently delete all cluster resources.
 
@@ -62,18 +61,39 @@ func destroyCluster(cmd *cobra.Command) error {
 	}
 
 	fmt.Printf("Provider: %s\n", cfg.Provider.Type)
-	fmt.Printf("Region: %s\n", cfg.Provider.Region)
+	location := cfg.Provider.Region
+	if cfg.Provider.Location != "" {
+		location = cfg.Provider.Location
+	}
+	if location != "" {
+		fmt.Printf("Location: %s\n", location)
+	}
 	fmt.Println()
 
-	// Show warning
+	// Show provider-specific warning
 	fmt.Println("⚠️  WARNING: This will permanently delete the following resources:")
-	fmt.Println("  - All EC2 instances (control plane and workers)")
-	fmt.Println("  - VPC and all networking components (subnets, NAT gateways, IGW)")
-	fmt.Println("  - Network Load Balancer")
-	fmt.Println("  - EBS volumes (including etcd data)")
-	fmt.Println("  - Security groups and IAM roles")
+	switch cfg.Provider.Type {
+	case "hetzner":
+		fmt.Println("  - All servers (control plane and workers)")
+		fmt.Println("  - Private network and subnets")
+		fmt.Println("  - Load balancer")
+		fmt.Println("  - Firewall rules")
+		fmt.Println("  - SSH keys")
+	case "aws":
+		fmt.Println("  - All EC2 instances (control plane and workers)")
+		fmt.Println("  - VPC and all networking components (subnets, NAT gateways, IGW)")
+		fmt.Println("  - Network Load Balancer")
+		fmt.Println("  - EBS volumes (including etcd data)")
+		fmt.Println("  - Security groups and IAM roles")
+	default:
+		fmt.Println("  - All compute instances (control plane and workers)")
+		fmt.Println("  - All networking components")
+		fmt.Println("  - Load balancers and firewall rules")
+	}
 	if destroyCleanup {
-		fmt.Println("  - S3 bucket for kubeconfig and state (with --cleanup)")
+		if cfg.Provider.Type == "aws" {
+			fmt.Println("  - S3 bucket for kubeconfig and state (with --cleanup)")
+		}
 		fmt.Println("  - Local terraform state and working directory (with --cleanup)")
 	}
 	fmt.Println()
@@ -109,26 +129,28 @@ func destroyCluster(cmd *cobra.Command) error {
 		return fmt.Errorf("failed to destroy infrastructure: %w", err)
 	}
 
-	// Cleanup local files and S3 bucket if requested
+	// Cleanup local files (and S3 bucket for AWS) if requested
 	if destroyCleanup {
 		fmt.Println("\nCleaning up additional resources...")
 
-		// Delete S3 bucket
-		bucketName := fmt.Sprintf("tdls-k8s-%s", cfg.Name)
-		fmt.Printf("Deleting S3 bucket: %s\n", bucketName)
+		// Delete S3 bucket (AWS only)
+		if cfg.Provider.Type == "aws" {
+			bucketName := fmt.Sprintf("tdls-k8s-%s", cfg.Name)
+			fmt.Printf("Deleting S3 bucket: %s\n", bucketName)
 
-		// Empty bucket first (required before deletion)
-		emptyCmd := fmt.Sprintf("aws s3 rm s3://%s --recursive --region %s 2>/dev/null", bucketName, cfg.Provider.Region)
-		if err := runShellCommandQuiet(emptyCmd); err != nil {
-			fmt.Printf("Note: bucket may already be empty or not exist\n")
-		}
+			// Empty bucket first (required before deletion)
+			emptyCmd := fmt.Sprintf("aws s3 rm s3://%s --recursive --region %s 2>/dev/null", bucketName, cfg.Provider.Region)
+			if err := runShellCommandQuiet(emptyCmd); err != nil {
+				fmt.Printf("Note: bucket may already be empty or not exist\n")
+			}
 
-		// Delete bucket
-		deleteCmd := fmt.Sprintf("aws s3 rb s3://%s --region %s 2>/dev/null", bucketName, cfg.Provider.Region)
-		if err := runShellCommandQuiet(deleteCmd); err != nil {
-			fmt.Printf("Note: S3 bucket may already be deleted\n")
-		} else {
-			fmt.Printf("✓ Deleted S3 bucket: %s\n", bucketName)
+			// Delete bucket
+			deleteCmd := fmt.Sprintf("aws s3 rb s3://%s --region %s 2>/dev/null", bucketName, cfg.Provider.Region)
+			if err := runShellCommandQuiet(deleteCmd); err != nil {
+				fmt.Printf("Note: S3 bucket may already be deleted\n")
+			} else {
+				fmt.Printf("✓ Deleted S3 bucket: %s\n", bucketName)
+			}
 		}
 
 		// Remove local working directory

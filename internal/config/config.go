@@ -19,9 +19,10 @@ type ClusterConfig struct {
 
 // ProviderConfig contains cloud provider configuration
 type ProviderConfig struct {
-	Type   string    `yaml:"type"`   // aws, vsphere
-	Region string    `yaml:"region"` // For AWS
-	VPC    VPCConfig `yaml:"vpc"`
+	Type     string    `yaml:"type"`               // aws, vsphere, hetzner
+	Region   string    `yaml:"region,omitempty"`   // For AWS
+	Location string    `yaml:"location,omitempty"` // For Hetzner (fsn1, nbg1, hel1, ash, hil)
+	VPC      VPCConfig `yaml:"vpc"`
 	// vSphere-specific fields can be added here
 	VCenter    string `yaml:"vcenter,omitempty"`
 	Datacenter string `yaml:"datacenter,omitempty"`
@@ -93,8 +94,8 @@ func (c *ClusterConfig) Validate() error {
 		return &ConfigError{Message: "provider type is required"}
 	}
 
-	if c.Provider.Type != "aws" && c.Provider.Type != "vsphere" {
-		return &ConfigError{Message: "provider type must be 'aws' or 'vsphere'"}
+	if c.Provider.Type != "aws" && c.Provider.Type != "vsphere" && c.Provider.Type != "hetzner" {
+		return &ConfigError{Message: "provider type must be 'aws', 'vsphere', or 'hetzner'"}
 	}
 
 	if c.Nodes.ControlPlane.Count < 1 {

@@ -58,7 +58,7 @@ func TestClusterConfig_Validate_InvalidProviderType(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for invalid provider type")
 	}
-	if err.Error() != "provider type must be 'aws' or 'vsphere'" {
+	if err.Error() != "provider type must be 'aws', 'vsphere', or 'hetzner'" {
 		t.Errorf("unexpected error message: %v", err)
 	}
 }
