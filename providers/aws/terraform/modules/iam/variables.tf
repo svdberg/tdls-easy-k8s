@@ -28,6 +28,12 @@ variable "enable_cloudwatch_logs" {
   type        = bool
 }
 
+variable "enable_secrets_manager" {
+  description = "Enable AWS Secrets Manager IAM permissions on worker nodes"
+  type        = bool
+  default     = false
+}
+
 variable "tags" {
   description = "Additional tags for resources"
   type        = map(string)

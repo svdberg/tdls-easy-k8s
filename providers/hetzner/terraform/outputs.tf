@@ -35,3 +35,8 @@ output "kubernetes_api_endpoint" {
   description = "Kubernetes API endpoint via load balancer"
   value       = "https://${hcloud_load_balancer.api.ipv4}:6443"
 }
+
+output "ingress_lb_ipv4" {
+  description = "Ingress load balancer IPv4 address (if enabled)"
+  value       = var.enable_ingress_lb ? hcloud_load_balancer.ingress[0].ipv4 : null
+}

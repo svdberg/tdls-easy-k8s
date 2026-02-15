@@ -1,0 +1,23 @@
+# Traefik values for tdls-easy-k8s
+# Runs as DaemonSet with hostPort so NLB targets workers directly (TCP passthrough)
+deployment:
+  kind: DaemonSet
+
+ports:
+  web:
+    hostPort: 80
+  websecure:
+    hostPort: 443
+
+service:
+  enabled: false
+
+ingressRoute:
+  dashboard:
+    enabled: false
+
+providers:
+  kubernetesCRD:
+    enabled: true
+  kubernetesIngress:
+    enabled: true

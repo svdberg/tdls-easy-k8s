@@ -411,6 +411,7 @@ func (p *HetznerProvider) generateTerraformVars(cfg *config.ClusterConfig) error
 		"worker_count":       cfg.Nodes.Workers.Count,
 		"network_cidr":       networkCIDR,
 		"kubernetes_version": cfg.Kubernetes.Version,
+		"enable_ingress_lb":  cfg.Components.Traefik.Enabled,
 	}
 
 	jsonData, err := json.MarshalIndent(vars, "", "  ")

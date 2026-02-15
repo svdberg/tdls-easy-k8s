@@ -98,6 +98,16 @@ output "nlb_zone_id" {
   value       = var.enable_nlb ? module.loadbalancer[0].nlb_zone_id : null
 }
 
+output "ingress_nlb_dns_name" {
+  description = "Ingress NLB DNS name (if enabled)"
+  value       = var.enable_nlb && var.enable_ingress_nlb ? module.loadbalancer[0].ingress_nlb_dns_name : null
+}
+
+output "ingress_nlb_zone_id" {
+  description = "Ingress NLB Route53 zone ID (if enabled)"
+  value       = var.enable_nlb && var.enable_ingress_nlb ? module.loadbalancer[0].ingress_nlb_zone_id : null
+}
+
 # =============================================================================
 # Security Outputs
 # =============================================================================

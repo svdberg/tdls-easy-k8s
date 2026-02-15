@@ -57,6 +57,7 @@ module "security" {
   vpc_cidr                 = module.networking.vpc_cidr
   api_server_allowed_cidrs = var.api_server_allowed_cidrs
   enable_nlb               = var.enable_nlb
+  enable_ingress_nlb       = var.enable_ingress_nlb
 
   tags = local.common_tags
 
@@ -76,6 +77,7 @@ module "iam" {
   kms_key_deletion_window = var.kms_key_deletion_window
   enable_session_manager  = var.enable_session_manager
   enable_cloudwatch_logs  = var.enable_cloudwatch_logs
+  enable_secrets_manager  = var.enable_secrets_manager
 
   tags = local.common_tags
 }
@@ -153,10 +155,12 @@ module "loadbalancer" {
   subnet_ids                 = module.networking.public_subnet_ids
   control_plane_instance_ids = module.control_plane.instance_ids
   nlb_internal               = var.nlb_internal
+  enable_ingress             = var.enable_ingress_nlb
+  worker_instance_ids        = module.worker.instance_ids
 
   tags = local.common_tags
 
-  depends_on = [module.control_plane]
+  depends_on = [module.control_plane, module.worker]
 }
 
 # =============================================================================

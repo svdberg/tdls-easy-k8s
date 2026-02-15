@@ -23,6 +23,12 @@ variable "enable_nlb" {
   type        = bool
 }
 
+variable "enable_ingress_nlb" {
+  description = "Enable ingress NLB security group rules (HTTP/HTTPS on workers)"
+  type        = bool
+  default     = false
+}
+
 variable "tags" {
   description = "Additional tags for resources"
   type        = map(string)

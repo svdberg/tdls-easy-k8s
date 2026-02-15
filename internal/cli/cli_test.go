@@ -130,6 +130,7 @@ func TestAppAddCommand_HasFlags(t *testing.T) {
 		{"output-dir", ""},
 		{"gitops-path", "clusters/production"},
 		{"depends-on", ""},
+		{"create-namespace", "false"},
 	}
 
 	for _, tc := range cases {

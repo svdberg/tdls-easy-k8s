@@ -462,6 +462,8 @@ func (p *AWSProvider) generateTerraformVars(cfg *config.ClusterConfig) error {
 		"enable_cloudwatch_logs":      true,
 		"enable_session_manager":      true,
 		"enable_encryption":           true,
+		"enable_ingress_nlb":          cfg.Components.Traefik.Enabled,
+		"enable_secrets_manager":      cfg.Components.ExternalSecrets.Enabled,
 	}
 
 	jsonData, err := json.MarshalIndent(vars, "", "  ")

@@ -139,3 +139,13 @@ variable "cluster_dns" {
   type        = string
   default     = "10.43.0.10"
 }
+
+# =============================================================================
+# Ingress Configuration
+# =============================================================================
+
+variable "enable_ingress_lb" {
+  description = "Enable a load balancer for ingress traffic (HTTP/HTTPS to workers)"
+  type        = bool
+  default     = false
+}

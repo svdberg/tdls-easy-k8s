@@ -120,6 +120,22 @@ variable "api_server_allowed_cidrs" {
   default     = ["0.0.0.0/0"]
 }
 
+variable "enable_ingress_nlb" {
+  description = "Enable internet-facing NLB for ingress traffic (ports 80/443 to workers)"
+  type        = bool
+  default     = false
+}
+
+# =============================================================================
+# Secrets Manager Configuration
+# =============================================================================
+
+variable "enable_secrets_manager" {
+  description = "Enable AWS Secrets Manager IAM permissions on worker nodes"
+  type        = bool
+  default     = false
+}
+
 # =============================================================================
 # Compute Configuration - Control Plane
 # =============================================================================

@@ -1,0 +1,2 @@
+# External Secrets Operator values for tdls-easy-k8s
+installCRDs: true

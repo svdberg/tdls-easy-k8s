@@ -344,3 +344,26 @@ resource "aws_iam_role_policy_attachment" "worker_ssm" {
   role       = aws_iam_role.worker.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
 }
+
+# AWS Secrets Manager Policy (for External Secrets Operator)
+resource "aws_iam_role_policy" "worker_secrets_manager" {
+  count = var.enable_secrets_manager ? 1 : 0
+
+  name_prefix = "secrets-manager-"
+  role        = aws_iam_role.worker.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "secretsmanager:GetSecretValue",
+          "secretsmanager:ListSecrets",
+          "secretsmanager:DescribeSecret"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}

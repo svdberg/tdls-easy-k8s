@@ -335,3 +335,69 @@ resource "hcloud_load_balancer_service" "rke2" {
 
   depends_on = [hcloud_load_balancer_target.cp_init]
 }
+
+# =============================================================================
+# Ingress Load Balancer (HTTP/HTTPS traffic to workers)
+# =============================================================================
+
+resource "hcloud_load_balancer" "ingress" {
+  count              = var.enable_ingress_lb ? 1 : 0
+  name               = "${var.cluster_name}-ingress-lb"
+  load_balancer_type = "lb11"
+  location           = var.location
+  labels             = merge(local.common_labels, { role = "ingress" })
+}
+
+resource "hcloud_load_balancer_network" "ingress" {
+  count            = var.enable_ingress_lb ? 1 : 0
+  load_balancer_id = hcloud_load_balancer.ingress[0].id
+  network_id       = hcloud_network.cluster.id
+
+  depends_on = [hcloud_network_subnet.cluster]
+}
+
+resource "hcloud_load_balancer_target" "ingress_worker" {
+  count            = var.enable_ingress_lb ? var.worker_count : 0
+  type             = "server"
+  load_balancer_id = hcloud_load_balancer.ingress[0].id
+  server_id        = hcloud_server.worker[count.index].id
+  use_private_ip   = true
+
+  depends_on = [hcloud_load_balancer_network.ingress]
+}
+
+resource "hcloud_load_balancer_service" "ingress_http" {
+  count            = var.enable_ingress_lb ? 1 : 0
+  load_balancer_id = hcloud_load_balancer.ingress[0].id
+  protocol         = "tcp"
+  listen_port      = 80
+  destination_port = 80
+
+  health_check {
+    protocol = "tcp"
+    port     = 80
+    interval = 10
+    timeout  = 5
+    retries  = 3
+  }
+
+  depends_on = [hcloud_load_balancer_target.ingress_worker]
+}
+
+resource "hcloud_load_balancer_service" "ingress_https" {
+  count            = var.enable_ingress_lb ? 1 : 0
+  load_balancer_id = hcloud_load_balancer.ingress[0].id
+  protocol         = "tcp"
+  listen_port      = 443
+  destination_port = 443
+
+  health_check {
+    protocol = "tcp"
+    port     = 443
+    interval = 10
+    timeout  = 5
+    retries  = 3
+  }
+
+  depends_on = [hcloud_load_balancer_target.ingress_worker]
+}

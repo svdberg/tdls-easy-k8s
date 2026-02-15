@@ -287,6 +287,30 @@ resource "aws_security_group_rule" "worker_wireguard_ingress_self" {
   security_group_id        = aws_security_group.worker.id
 }
 
+# HTTP ingress via NLB (Traefik)
+resource "aws_security_group_rule" "worker_ingress_http" {
+  count             = var.enable_ingress_nlb ? 1 : 0
+  type              = "ingress"
+  from_port         = 80
+  to_port           = 80
+  protocol          = "tcp"
+  cidr_blocks       = ["0.0.0.0/0"]
+  description       = "HTTP ingress via NLB"
+  security_group_id = aws_security_group.worker.id
+}
+
+# HTTPS ingress via NLB (Traefik)
+resource "aws_security_group_rule" "worker_ingress_https" {
+  count             = var.enable_ingress_nlb ? 1 : 0
+  type              = "ingress"
+  from_port         = 443
+  to_port           = 443
+  protocol          = "tcp"
+  cidr_blocks       = ["0.0.0.0/0"]
+  description       = "HTTPS ingress via NLB"
+  security_group_id = aws_security_group.worker.id
+}
+
 # SSH (for emergency access or Session Manager)
 resource "aws_security_group_rule" "worker_ssh_ingress" {
   type              = "ingress"
