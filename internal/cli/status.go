@@ -2,6 +2,8 @@ package cli
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -149,8 +151,13 @@ func loadClusterConfig(clusterName string) (*config.ClusterConfig, error) {
 	}
 
 	// Try to load from cluster working directory
-	workDir := fmt.Sprintf("~/.tdls-k8s/clusters/%s/cluster.yaml", clusterName)
-	return config.LoadConfig(workDir)
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get home directory: %w", err)
+	}
+
+	configPath := filepath.Join(homeDir, ".tdls-k8s", "clusters", clusterName, "cluster.yaml")
+	return config.LoadConfig(configPath)
 }
 
 func getProvider(providerType string) (provider.Provider, error) {

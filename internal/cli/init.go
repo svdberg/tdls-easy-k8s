@@ -2,6 +2,10 @@ package cli
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
+
+	"gopkg.in/yaml.v3"
 
 	"github.com/spf13/cobra"
 	"github.com/user/tdls-easy-k8s/internal/config"
@@ -163,5 +167,30 @@ func initCluster(cmd *cobra.Command) error {
 		return fmt.Errorf("infrastructure creation failed: %w", err)
 	}
 
+	// Persist cluster config for subsequent commands (kubeconfig, status, validate, etc.)
+	if err := saveClusterConfig(cfg); err != nil {
+		fmt.Printf("Warning: failed to save cluster config: %v\n", err)
+		fmt.Println("You may need to pass --config to subsequent commands.")
+	}
+
 	return nil
+}
+
+func saveClusterConfig(cfg *config.ClusterConfig) error {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+
+	clusterDir := filepath.Join(homeDir, ".tdls-k8s", "clusters", cfg.Name)
+	if err := os.MkdirAll(clusterDir, 0755); err != nil {
+		return err
+	}
+
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(filepath.Join(clusterDir, "cluster.yaml"), data, 0644)
 }

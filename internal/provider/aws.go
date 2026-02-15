@@ -949,6 +949,13 @@ func (p *AWSProvider) GetClusterStatus(cfg *config.ClusterConfig) (*ClusterStatu
 
 // downloadKubeconfig downloads the kubeconfig from S3 and returns the path
 func (p *AWSProvider) downloadKubeconfig(cfg *config.ClusterConfig) (string, error) {
+	// Ensure working directory is set so getTerraformOutput can find the NLB DNS
+	if p.workDir == "" {
+		if err := p.setupWorkingDirectory(cfg); err != nil {
+			return "", fmt.Errorf("failed to setup working directory: %w", err)
+		}
+	}
+
 	// Create temp file
 	tmpFile, err := os.CreateTemp("", "kubeconfig-*.yaml")
 	if err != nil {
