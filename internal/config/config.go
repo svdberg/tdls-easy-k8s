@@ -106,6 +106,15 @@ func (c *ClusterConfig) Validate() error {
 		return &ConfigError{Message: "kubernetes version is required"}
 	}
 
+	if c.Components.Vault.Enabled {
+		if c.Components.Vault.Mode != "external" && c.Components.Vault.Mode != "deploy" {
+			return &ConfigError{Message: "vault mode must be 'external' or 'deploy'"}
+		}
+		if c.Components.Vault.Mode == "external" && c.Components.Vault.Address == "" {
+			return &ConfigError{Message: "vault address is required when mode is 'external'"}
+		}
+	}
+
 	return nil
 }
 

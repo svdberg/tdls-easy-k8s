@@ -95,6 +95,61 @@ func TestClusterConfig_Validate_VSphereProvider(t *testing.T) {
 	}
 }
 
+func TestClusterConfig_Validate_VaultInvalidMode(t *testing.T) {
+	cfg := validConfig()
+	cfg.Components.Vault.Enabled = true
+	cfg.Components.Vault.Mode = "invalid"
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected error for invalid vault mode")
+	}
+	if err.Error() != "vault mode must be 'external' or 'deploy'" {
+		t.Errorf("unexpected error message: %v", err)
+	}
+}
+
+func TestClusterConfig_Validate_VaultExternalMissingAddress(t *testing.T) {
+	cfg := validConfig()
+	cfg.Components.Vault.Enabled = true
+	cfg.Components.Vault.Mode = "external"
+	cfg.Components.Vault.Address = ""
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected error for external vault without address")
+	}
+	if err.Error() != "vault address is required when mode is 'external'" {
+		t.Errorf("unexpected error message: %v", err)
+	}
+}
+
+func TestClusterConfig_Validate_VaultExternalValid(t *testing.T) {
+	cfg := validConfig()
+	cfg.Components.Vault.Enabled = true
+	cfg.Components.Vault.Mode = "external"
+	cfg.Components.Vault.Address = "https://vault.example.com"
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("expected valid vault external config, got: %v", err)
+	}
+}
+
+func TestClusterConfig_Validate_VaultDeployValid(t *testing.T) {
+	cfg := validConfig()
+	cfg.Components.Vault.Enabled = true
+	cfg.Components.Vault.Mode = "deploy"
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("expected valid vault deploy config, got: %v", err)
+	}
+}
+
+func TestClusterConfig_Validate_VaultDisabledSkipsValidation(t *testing.T) {
+	cfg := validConfig()
+	cfg.Components.Vault.Enabled = false
+	cfg.Components.Vault.Mode = "invalid"
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("expected disabled vault to skip validation, got: %v", err)
+	}
+}
+
 func TestConfigError_Error(t *testing.T) {
 	err := &ConfigError{Message: "something went wrong"}
 	if err.Error() != "something went wrong" {

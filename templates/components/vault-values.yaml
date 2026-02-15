@@ -1,0 +1,12 @@
+# Vault dev mode (single server, in-memory storage)
+# Good for testing and development — NOT for production
+# For production, use vault-ha-values.yaml instead
+server:
+  dev:
+    enabled: true
+  standalone:
+    enabled: false
+ui:
+  enabled: true
+injector:
+  enabled: false

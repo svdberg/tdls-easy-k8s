@@ -22,7 +22,7 @@ func TestRootCommand_HasSubcommands(t *testing.T) {
 		names[cmd.Name()] = true
 	}
 
-	expected := []string{"init", "gitops", "app", "version", "destroy", "status", "validate", "kubeconfig", "monitor"}
+	expected := []string{"init", "gitops", "app", "version", "destroy", "status", "validate", "kubeconfig", "monitor", "vault"}
 	for _, name := range expected {
 		if !names[name] {
 			t.Errorf("expected subcommand %q to be registered", name)
@@ -445,6 +445,72 @@ func TestMonitorCommand_HasFlags(t *testing.T) {
 		if f.DefValue != tc.defValue {
 			t.Errorf("flag %q: expected default %q, got %q", tc.name, tc.defValue, f.DefValue)
 		}
+	}
+}
+
+func TestVaultCommand_HasSetupSubcommand(t *testing.T) {
+	commands := vaultCmd.Commands()
+	found := false
+	for _, cmd := range commands {
+		if cmd.Name() == "setup" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("expected 'setup' subcommand under 'vault'")
+	}
+}
+
+func TestVaultSetupCommand_HasFlags(t *testing.T) {
+	flags := vaultSetupCmd.Flags()
+
+	cases := []struct {
+		name     string
+		defValue string
+	}{
+		{"cluster", ""},
+		{"output-dir", ""},
+		{"gitops-path", "clusters/production"},
+	}
+
+	for _, tc := range cases {
+		f := flags.Lookup(tc.name)
+		if f == nil {
+			t.Errorf("expected flag %q to exist", tc.name)
+			continue
+		}
+		if f.DefValue != tc.defValue {
+			t.Errorf("flag %q: expected default %q, got %q", tc.name, tc.defValue, f.DefValue)
+		}
+	}
+}
+
+func TestGenerateVaultClusterSecretStoreYAML(t *testing.T) {
+	yaml := generateVaultClusterSecretStoreYAML("https://vault.example.com")
+
+	expected := []string{
+		"apiVersion: external-secrets.io/v1beta1",
+		"kind: ClusterSecretStore",
+		"name: vault",
+		"server: https://vault.example.com",
+		"path: secret",
+		"version: v2",
+		"mountPath: kubernetes",
+		"role: external-secrets",
+	}
+	for _, s := range expected {
+		if !strings.Contains(yaml, s) {
+			t.Errorf("expected YAML to contain %q, got:\n%s", s, yaml)
+		}
+	}
+}
+
+func TestGenerateVaultClusterSecretStoreYAML_InCluster(t *testing.T) {
+	yaml := generateVaultClusterSecretStoreYAML("http://vault.vault-system.svc:8200")
+
+	if !strings.Contains(yaml, "server: http://vault.vault-system.svc:8200") {
+		t.Errorf("expected in-cluster Vault address, got:\n%s", yaml)
 	}
 }
 

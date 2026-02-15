@@ -1,0 +1,12 @@
+# Vault HA mode with Raft storage (production)
+# Runs 3 replicas with integrated storage
+server:
+  ha:
+    enabled: true
+    replicas: 3
+    raft:
+      enabled: true
+ui:
+  enabled: true
+injector:
+  enabled: false
