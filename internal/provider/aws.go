@@ -907,6 +907,9 @@ func (p *AWSProvider) GetClusterStatus(cfg *config.ClusterConfig) (*ClusterStatu
 					component = "kube-apiserver"
 				}
 
+				if pod.Status.Phase == "Succeeded" {
+					continue // skip completed jobs
+				}
 				componentCounts[component]++
 				if pod.Status.Phase == "Running" {
 					componentReady[component]++
@@ -1087,20 +1090,26 @@ func (p *AWSProvider) ValidateSystemPods(cfg *config.ClusterConfig) (string, err
 		return "", err
 	}
 
-	total := len(result.Items)
 	running := 0
+	completed := 0
 
 	for _, pod := range result.Items {
 		if pod.Status.Phase == "Running" {
 			running++
+		} else if pod.Status.Phase == "Succeeded" {
+			completed++
 		}
 	}
 
-	if running < total {
-		return "", fmt.Errorf("%d/%d pods running", running, total)
+	active := len(result.Items) - completed
+	if running < active {
+		return "", fmt.Errorf("%d/%d pods running", running, active)
 	}
 
-	return fmt.Sprintf("All %d system pods are running", total), nil
+	if completed > 0 {
+		return fmt.Sprintf("All %d system pods are running (%d completed jobs)", active, completed), nil
+	}
+	return fmt.Sprintf("All %d system pods are running", active), nil
 }
 
 // ValidateEtcd checks etcd cluster health
