@@ -79,9 +79,16 @@ echo "[$(date)] Configuring RKE2..."
 
 mkdir -p /etc/rancher/rke2
 
-# Get server private IP (Hetzner private network)
-PRIVATE_IP=$(ip -4 addr show eth0 | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -1)
+# Get server IPs
+# Private IP from Hetzner private network (not eth0 — that's the public interface)
+PRIVATE_IP=$(curl -s http://169.254.169.254/hetzner/v1/metadata/private-networks | grep -oP '(?<=ip: )\S+' | head -1)
 PUBLIC_IP=$(curl -s http://169.254.169.254/hetzner/v1/metadata/public-ipv4 2>/dev/null || hostname -I | awk '{print $1}')
+
+if [ -z "$PRIVATE_IP" ]; then
+  echo "[$(date)] WARNING: Could not detect private network IP, falling back to public IP"
+  PRIVATE_IP="$PUBLIC_IP"
+fi
+echo "[$(date)] Private IP: $PRIVATE_IP, Public IP: $PUBLIC_IP"
 
 # Build TLS SANs
 if [ "$IS_FIRST_NODE" = "true" ]; then
@@ -89,6 +96,7 @@ if [ "$IS_FIRST_NODE" = "true" ]; then
 
   cat <<EOF > /etc/rancher/rke2/config.yaml
 token: $CLUSTER_TOKEN
+node-ip: $PRIVATE_IP
 node-taint:
   - "node-role.kubernetes.io/control-plane=:NoSchedule"
 cluster-cidr: "$CLUSTER_CIDR"
@@ -100,6 +108,7 @@ disable:
 etcd-expose-metrics: true
 tls-san:
   - $PUBLIC_IP
+  - $PRIVATE_IP
   - $LB_IPV4
 EOF
 
@@ -109,10 +118,12 @@ else
   cat <<EOF > /etc/rancher/rke2/config.yaml
 server: https://$FIRST_NODE_IP:9345
 token: $CLUSTER_TOKEN
+node-ip: $PRIVATE_IP
 node-taint:
   - "node-role.kubernetes.io/control-plane=:NoSchedule"
 tls-san:
   - $PUBLIC_IP
+  - $PRIVATE_IP
   - $LB_IPV4
 EOF
 

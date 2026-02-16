@@ -115,16 +115,16 @@ func generateHelmReleaseYAML(name, namespace, chart, repoName, version, valuesYA
 		valuesBlock = fmt.Sprintf("  values:\n%s\n", indented)
 	}
 
-	installBlock := ""
+	targetBlock := ""
 	if namespace != "default" {
-		installBlock = "  install:\n    createNamespace: true\n"
+		targetBlock = fmt.Sprintf("  targetNamespace: %s\n  install:\n    createNamespace: true\n", namespace)
 	}
 
 	return fmt.Sprintf(`apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: %s
-  namespace: %s
+  namespace: flux-system
 spec:
   interval: 5m0s
 %s  chart:
@@ -135,7 +135,7 @@ spec:
         kind: HelmRepository
         name: %s
         namespace: flux-system
-%s`, name, namespace, installBlock, chart, version, repoName, valuesBlock)
+%s`, name, targetBlock, chart, version, repoName, valuesBlock)
 }
 
 func indentYAML(yaml, prefix string) string {

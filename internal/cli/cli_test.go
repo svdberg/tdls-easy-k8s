@@ -241,11 +241,10 @@ func TestGenerateHelmReleaseYAML_NoValues(t *testing.T) {
 		"apiVersion: helm.toolkit.fluxcd.io/v2",
 		"kind: HelmRelease",
 		"name: my-api",
-		"namespace: default",
+		"namespace: flux-system",
 		"chart: nginx",
 		`version: "*"`,
 		"name: bitnami",
-		"namespace: flux-system",
 	}
 	for _, s := range expected {
 		if !strings.Contains(yaml, s) {
@@ -257,6 +256,9 @@ func TestGenerateHelmReleaseYAML_NoValues(t *testing.T) {
 	}
 	if strings.Contains(yaml, "createNamespace") {
 		t.Errorf("expected no createNamespace for default namespace, got:\n%s", yaml)
+	}
+	if strings.Contains(yaml, "targetNamespace") {
+		t.Errorf("expected no targetNamespace for default namespace, got:\n%s", yaml)
 	}
 }
 
@@ -276,8 +278,11 @@ func TestGenerateHelmReleaseYAML_WithValues(t *testing.T) {
 	if !strings.Contains(yaml, `version: "1.2.3"`) {
 		t.Errorf("expected version 1.2.3, got:\n%s", yaml)
 	}
-	if !strings.Contains(yaml, "namespace: production") {
-		t.Errorf("expected namespace production, got:\n%s", yaml)
+	if !strings.Contains(yaml, "namespace: flux-system") {
+		t.Errorf("expected HelmRelease in flux-system namespace, got:\n%s", yaml)
+	}
+	if !strings.Contains(yaml, "targetNamespace: production") {
+		t.Errorf("expected targetNamespace production, got:\n%s", yaml)
 	}
 	if !strings.Contains(yaml, "createNamespace: true") {
 		t.Errorf("expected createNamespace for non-default namespace, got:\n%s", yaml)
@@ -495,7 +500,7 @@ func TestGenerateVaultClusterSecretStoreYAML(t *testing.T) {
 	yaml := generateVaultClusterSecretStoreYAML("https://vault.example.com")
 
 	expected := []string{
-		"apiVersion: external-secrets.io/v1beta1",
+		"apiVersion: external-secrets.io/v1",
 		"kind: ClusterSecretStore",
 		"name: vault",
 		"server: https://vault.example.com",

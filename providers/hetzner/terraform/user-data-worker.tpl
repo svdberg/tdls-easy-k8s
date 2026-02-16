@@ -70,14 +70,21 @@ echo "[$(date)] Configuring RKE2 agent..."
 
 mkdir -p /etc/rancher/rke2
 
-# Get server metadata for node labels
+# Get server metadata for node labels and networking
 PUBLIC_IP=$(curl -s http://169.254.169.254/hetzner/v1/metadata/public-ipv4 2>/dev/null || hostname -I | awk '{print $1}')
+PRIVATE_IP=$(curl -s http://169.254.169.254/hetzner/v1/metadata/private-networks | grep -oP '(?<=ip: )\S+' | head -1)
 LOCATION=$(curl -s http://169.254.169.254/hetzner/v1/metadata/availability-zone 2>/dev/null || echo "unknown")
-SERVER_TYPE=$(curl -s http://169.254.169.254/hetzner/v1/metadata/instance-id 2>/dev/null || echo "unknown")
+
+if [ -z "$PRIVATE_IP" ]; then
+  echo "[$(date)] WARNING: Could not detect private network IP, falling back to public IP"
+  PRIVATE_IP="$PUBLIC_IP"
+fi
+echo "[$(date)] Private IP: $PRIVATE_IP, Public IP: $PUBLIC_IP"
 
 cat <<EOF > /etc/rancher/rke2/config.yaml
 server: https://$API_ENDPOINT:9345
 token: $CLUSTER_TOKEN
+node-ip: $PRIVATE_IP
 node-label:
   - "topology.kubernetes.io/zone=$LOCATION"
   - "node.tdls-easy-k8s.io/public-ip=$PUBLIC_IP"
