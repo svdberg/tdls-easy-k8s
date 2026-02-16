@@ -130,7 +130,6 @@ func TestAppAddCommand_HasFlags(t *testing.T) {
 		{"output-dir", ""},
 		{"gitops-path", "clusters/production"},
 		{"depends-on", ""},
-		{"create-namespace", "false"},
 	}
 
 	for _, tc := range cases {
@@ -256,6 +255,9 @@ func TestGenerateHelmReleaseYAML_NoValues(t *testing.T) {
 	if strings.Contains(yaml, "values:") {
 		t.Errorf("expected no values block, got:\n%s", yaml)
 	}
+	if strings.Contains(yaml, "createNamespace") {
+		t.Errorf("expected no createNamespace for default namespace, got:\n%s", yaml)
+	}
 }
 
 func TestGenerateHelmReleaseYAML_WithValues(t *testing.T) {
@@ -276,6 +278,9 @@ func TestGenerateHelmReleaseYAML_WithValues(t *testing.T) {
 	}
 	if !strings.Contains(yaml, "namespace: production") {
 		t.Errorf("expected namespace production, got:\n%s", yaml)
+	}
+	if !strings.Contains(yaml, "createNamespace: true") {
+		t.Errorf("expected createNamespace for non-default namespace, got:\n%s", yaml)
 	}
 }
 

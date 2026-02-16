@@ -10,16 +10,15 @@ import (
 )
 
 var (
-	appChart           string
-	appValues          string
-	appNamespace       string
-	appRepoURL         string
-	appVersion         string
-	appLayer           string
-	appOutputDir       string
-	appGitopsPath      string
-	appDependsOn       string
-	appCreateNamespace bool
+	appChart      string
+	appValues     string
+	appNamespace  string
+	appRepoURL    string
+	appVersion    string
+	appLayer      string
+	appOutputDir  string
+	appGitopsPath string
+	appDependsOn  string
 )
 
 // appCmd represents the app command group
@@ -59,7 +58,6 @@ func init() {
 	appAddCmd.Flags().StringVar(&appOutputDir, "output-dir", "", "Path to local gitops repo root (prints to stdout if omitted)")
 	appAddCmd.Flags().StringVar(&appGitopsPath, "gitops-path", "clusters/production", "Path within repo for Kustomization CRDs")
 	appAddCmd.Flags().StringVar(&appDependsOn, "depends-on", "", "Name of another app this one depends on")
-	appAddCmd.Flags().BoolVar(&appCreateNamespace, "create-namespace", false, "Generate a namespace manifest")
 
 	appAddCmd.MarkFlagRequired("chart")
 	appAddCmd.MarkFlagRequired("repo-url")
@@ -117,6 +115,11 @@ func generateHelmReleaseYAML(name, namespace, chart, repoName, version, valuesYA
 		valuesBlock = fmt.Sprintf("  values:\n%s\n", indented)
 	}
 
+	installBlock := ""
+	if namespace != "default" {
+		installBlock = "  install:\n    createNamespace: true\n"
+	}
+
 	return fmt.Sprintf(`apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -124,7 +127,7 @@ metadata:
   namespace: %s
 spec:
   interval: 5m0s
-  chart:
+%s  chart:
     spec:
       chart: %s
       version: "%s"
@@ -132,15 +135,7 @@ spec:
         kind: HelmRepository
         name: %s
         namespace: flux-system
-%s`, name, namespace, chart, version, repoName, valuesBlock)
-}
-
-func generateNamespaceYAML(namespace string) string {
-	return fmt.Sprintf(`apiVersion: v1
-kind: Namespace
-metadata:
-  name: %s
-`, namespace)
+%s`, name, namespace, installBlock, chart, version, repoName, valuesBlock)
 }
 
 func indentYAML(yaml, prefix string) string {
@@ -187,24 +182,19 @@ func addApplication(cmd *cobra.Command, appName string) error {
 	helmRepoYAML := generateHelmRepositoryYAML(repoName, appRepoURL)
 	helmReleaseYAML := generateHelmReleaseYAML(appName, appNamespace, chartName, repoName, appVersion, valuesYAML)
 
-	var namespaceYAML string
-	if appCreateNamespace && appNamespace != "default" {
-		namespaceYAML = generateNamespaceYAML(appNamespace)
-	}
-
 	if appOutputDir != "" {
-		if err := writeAppFiles(appName, kustomizationYAML, helmRepoYAML, helmReleaseYAML, namespaceYAML); err != nil {
+		if err := writeAppFiles(appName, kustomizationYAML, helmRepoYAML, helmReleaseYAML); err != nil {
 			return err
 		}
 	} else {
-		printAppYAML(appName, kustomizationYAML, helmRepoYAML, helmReleaseYAML, namespaceYAML)
+		printAppYAML(appName, kustomizationYAML, helmRepoYAML, helmReleaseYAML)
 	}
 
 	printAppNextSteps(appName)
 	return nil
 }
 
-func writeAppFiles(appName, kustomizationYAML, helmRepoYAML, helmReleaseYAML, namespaceYAML string) error {
+func writeAppFiles(appName, kustomizationYAML, helmRepoYAML, helmReleaseYAML string) error {
 	kustomizationPath := filepath.Join(appOutputDir, appGitopsPath, appLayer, appName+".yaml")
 	manifestDir := filepath.Join(appOutputDir, appLayer, appName)
 	helmRepoPath := filepath.Join(manifestDir, "helmrepository.yaml")
@@ -232,18 +222,10 @@ func writeAppFiles(appName, kustomizationYAML, helmRepoYAML, helmReleaseYAML, na
 	fmt.Printf("  %s\n", helmRepoPath)
 	fmt.Printf("  %s\n", helmReleasePath)
 
-	if namespaceYAML != "" {
-		namespacePath := filepath.Join(manifestDir, "namespace.yaml")
-		if err := os.WriteFile(namespacePath, []byte(namespaceYAML), 0o644); err != nil {
-			return fmt.Errorf("failed to write %s: %w", namespacePath, err)
-		}
-		fmt.Printf("  %s\n", namespacePath)
-	}
-
 	return nil
 }
 
-func printAppYAML(appName, kustomizationYAML, helmRepoYAML, helmReleaseYAML, namespaceYAML string) {
+func printAppYAML(appName, kustomizationYAML, helmRepoYAML, helmReleaseYAML string) {
 	fmt.Printf("# %s/%s/%s.yaml\n", appGitopsPath, appLayer, appName)
 	fmt.Print(kustomizationYAML)
 	fmt.Println("---")
@@ -252,11 +234,6 @@ func printAppYAML(appName, kustomizationYAML, helmRepoYAML, helmReleaseYAML, nam
 	fmt.Println("---")
 	fmt.Printf("# %s/%s/helmrelease.yaml\n", appLayer, appName)
 	fmt.Print(helmReleaseYAML)
-	if namespaceYAML != "" {
-		fmt.Println("---")
-		fmt.Printf("# %s/%s/namespace.yaml\n", appLayer, appName)
-		fmt.Print(namespaceYAML)
-	}
 }
 
 func printAppNextSteps(appName string) {

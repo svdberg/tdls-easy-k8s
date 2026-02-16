@@ -28,7 +28,7 @@ var vaultSetupCmd = &cobra.Command{
 	Long: `Generate Flux CD manifests for Vault integration based on the cluster config.
 
 In 'external' mode: generates a ClusterSecretStore pointing at your existing Vault instance.
-In 'deploy' mode: generates HelmRepository, HelmRelease, namespace, and ClusterSecretStore
+In 'deploy' mode: generates HelmRepository, HelmRelease, and ClusterSecretStore
 to deploy Vault into the cluster and connect ESO to it.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return setupVault(cmd)
@@ -81,17 +81,16 @@ func setupVaultExternal(address string) error {
 }
 
 func setupVaultDeploy() error {
-	namespaceYAML := generateNamespaceYAML("vault-system")
 	helmRepoYAML := generateHelmRepositoryYAML("hashicorp", "https://helm.releases.hashicorp.com")
 	helmReleaseYAML := generateHelmReleaseYAML("vault", "vault-system", "vault", "hashicorp", "*", vaultDeployValues())
 	kustomizationYAML := generateAppKustomizationYAML("vault", "infrastructure", "")
 	clusterSecretStoreYAML := generateVaultClusterSecretStoreYAML("http://vault.vault-system.svc:8200")
 
 	if vaultOutputDir != "" {
-		return writeVaultDeployFiles(namespaceYAML, helmRepoYAML, helmReleaseYAML, kustomizationYAML, clusterSecretStoreYAML)
+		return writeVaultDeployFiles(helmRepoYAML, helmReleaseYAML, kustomizationYAML, clusterSecretStoreYAML)
 	}
 
-	printVaultDeployYAML(namespaceYAML, helmRepoYAML, helmReleaseYAML, kustomizationYAML, clusterSecretStoreYAML)
+	printVaultDeployYAML(helmRepoYAML, helmReleaseYAML, kustomizationYAML, clusterSecretStoreYAML)
 	return nil
 }
 
@@ -144,7 +143,7 @@ func writeVaultExternalFiles(clusterSecretStoreYAML string) error {
 	return nil
 }
 
-func writeVaultDeployFiles(namespaceYAML, helmRepoYAML, helmReleaseYAML, kustomizationYAML, clusterSecretStoreYAML string) error {
+func writeVaultDeployFiles(helmRepoYAML, helmReleaseYAML, kustomizationYAML, clusterSecretStoreYAML string) error {
 	vaultDir := filepath.Join(vaultOutputDir, "infrastructure", "vault")
 	kustomizationPath := filepath.Join(vaultOutputDir, vaultGitopsPath, "infrastructure", "vault.yaml")
 	cssDir := filepath.Join(vaultOutputDir, "infrastructure", "external-secrets")
@@ -164,7 +163,6 @@ func writeVaultDeployFiles(namespaceYAML, helmRepoYAML, helmReleaseYAML, kustomi
 		path    string
 		content string
 	}{
-		{filepath.Join(vaultDir, "namespace.yaml"), namespaceYAML},
 		{filepath.Join(vaultDir, "helmrepository.yaml"), helmRepoYAML},
 		{filepath.Join(vaultDir, "helmrelease.yaml"), helmReleaseYAML},
 		{kustomizationPath, kustomizationYAML},
@@ -190,10 +188,7 @@ func printVaultExternalYAML(clusterSecretStoreYAML string) {
 	printVaultExternalNextSteps()
 }
 
-func printVaultDeployYAML(namespaceYAML, helmRepoYAML, helmReleaseYAML, kustomizationYAML, clusterSecretStoreYAML string) {
-	fmt.Println("# infrastructure/vault/namespace.yaml")
-	fmt.Print(namespaceYAML)
-	fmt.Println("---")
+func printVaultDeployYAML(helmRepoYAML, helmReleaseYAML, kustomizationYAML, clusterSecretStoreYAML string) {
 	fmt.Println("# infrastructure/vault/helmrepository.yaml")
 	fmt.Print(helmRepoYAML)
 	fmt.Println("---")

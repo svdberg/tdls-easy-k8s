@@ -418,6 +418,31 @@ tdls-easy-k8s app add my-api \
   --depends-on=redis
 ```
 
+### `tdls-easy-k8s vault setup`
+
+Generate Vault integration manifests for GitOps deployment. Supports two modes based on the cluster config:
+
+- **`external`**: Generates a `ClusterSecretStore` pointing at your existing Vault instance
+- **`deploy`**: Generates a full Vault deployment (HelmRepository, HelmRelease, namespace) plus a `ClusterSecretStore`
+
+**Flags:**
+
+| Flag | Required | Default | Description |
+|------|----------|---------|-------------|
+| `--cluster` / `-c` | Yes | | Cluster name |
+| `--output-dir` | No | | Path to local gitops repo root (prints to stdout if omitted) |
+| `--gitops-path` | No | `clusters/production` | Path within repo for Kustomization CRDs |
+
+**Examples:**
+
+```bash
+# Preview manifests for external Vault
+tdls-easy-k8s vault setup --cluster=production
+
+# Write deploy-mode manifests to gitops repo
+tdls-easy-k8s vault setup --cluster=production --output-dir=~/gitops-repo
+```
+
 ### `tdls-easy-k8s kubeconfig`
 
 Download and configure kubeconfig for cluster access.
@@ -558,20 +583,50 @@ tdls-easy-k8s version
 
 ## Components
 
-### Traefik
+When components are enabled in the cluster config, `init` provisions the required infrastructure (ingress load balancers, IAM policies). The components themselves are deployed via GitOps using `app add` and `vault setup`.
 
-Traefik is automatically deployed as the ingress controller. Configure it in your cluster config:
+### Traefik (Ingress)
 
-```yaml
-components:
-  traefik:
-    enabled: true
-    version: "26.x"
+Enabling Traefik creates an ingress load balancer during `init` (NLB on AWS, LB on Hetzner) that routes HTTP/HTTPS traffic to worker nodes. Traefik runs as a DaemonSet with hostPort, so no Kubernetes `LoadBalancer` service is needed.
+
+```bash
+# 1. Enable in cluster config and run init (creates the ingress LB)
+# 2. Deploy Traefik via GitOps
+tdls-easy-k8s app add traefik \
+  --chart=traefik/traefik \
+  --repo-url=https://traefik.github.io/charts \
+  --layer=infrastructure \
+  --namespace=traefik-system \
+  --values=templates/components/traefik-values.yaml \
+  --output-dir=~/gitops-repo
+
+# 3. Point DNS to the ingress LB
+#    AWS:     tofu output ingress_nlb_dns_name
+#    Hetzner: tofu output ingress_lb_ipv4
 ```
+
+### External Secrets Operator (ESO)
+
+ESO syncs secrets from external stores into Kubernetes Secrets. On AWS, enabling it grants worker nodes IAM permissions for Secrets Manager.
+
+```bash
+# Deploy ESO via GitOps
+tdls-easy-k8s app add external-secrets \
+  --chart=external-secrets/external-secrets \
+  --repo-url=https://charts.external-secrets.io \
+  --layer=infrastructure \
+  --namespace=external-secrets \
+  --values=templates/components/eso-values.yaml \
+  --output-dir=~/gitops-repo
+```
+
+See `templates/components/eso-clustersecretstore.yaml` for an AWS Secrets Manager ClusterSecretStore template.
 
 ### Vault Integration
 
-Integrate with an external Vault instance for secrets management:
+Vault can be used as the secrets backend for ESO. Two modes are supported:
+
+**External Vault** — connect ESO to an existing Vault instance:
 
 ```yaml
 components:
@@ -579,17 +634,28 @@ components:
     enabled: true
     mode: external
     address: https://vault.example.com
-```
-
-### External Secrets Operator
-
-Automatically sync secrets from Vault to Kubernetes:
-
-```yaml
-components:
   externalSecrets:
     enabled: true
 ```
+
+**Deploy Vault** — install Vault into the cluster via Helm:
+
+```yaml
+components:
+  vault:
+    enabled: true
+    mode: deploy
+  externalSecrets:
+    enabled: true
+```
+
+After deploying ESO, generate the Vault manifests:
+
+```bash
+tdls-easy-k8s vault setup --cluster=production --output-dir=~/gitops-repo
+```
+
+This generates a `ClusterSecretStore` (both modes) and, for deploy mode, also the Vault HelmRelease, HelmRepository, and namespace. See `templates/components/` for reference values files (`vault-values.yaml` for dev, `vault-ha-values.yaml` for production).
 
 ## Development
 
@@ -723,6 +789,9 @@ tofu output
 - [x] **Application deployment** (`app add` command with Helm chart support)
 - [x] **Cluster monitoring** (`monitor` command with k9s auto-installation)
 - [x] **Unit tests** and **CI/CD pipeline** (GitHub Actions)
+- [x] **Ingress support** (Traefik via ingress NLB on AWS, ingress LB on Hetzner)
+- [x] **Secrets management** (ESO with AWS Secrets Manager IAM, Vault external + deploy modes)
+- [x] **Vault setup command** (`vault setup` for both external and deploy modes)
 
 ### Planned 📋
 - [ ] vSphere provider implementation
