@@ -84,7 +84,7 @@ func setupVaultDeploy() error {
 	helmRepoYAML := generateHelmRepositoryYAML("hashicorp", "https://helm.releases.hashicorp.com")
 	helmReleaseYAML := generateHelmReleaseYAML("vault", "vault-system", "vault", "hashicorp", "*", vaultDeployValues())
 	kustomizationYAML := generateAppKustomizationYAML("vault", "infrastructure", "")
-	clusterSecretStoreYAML := generateVaultClusterSecretStoreYAML("http://vault.vault-system.svc:8200")
+	clusterSecretStoreYAML := generateVaultClusterSecretStoreYAML("http://vault-system-vault.vault-system.svc:8200")
 
 	if vaultOutputDir != "" {
 		return writeVaultDeployFiles(helmRepoYAML, helmReleaseYAML, kustomizationYAML, clusterSecretStoreYAML)

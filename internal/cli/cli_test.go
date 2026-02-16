@@ -517,9 +517,9 @@ func TestGenerateVaultClusterSecretStoreYAML(t *testing.T) {
 }
 
 func TestGenerateVaultClusterSecretStoreYAML_InCluster(t *testing.T) {
-	yaml := generateVaultClusterSecretStoreYAML("http://vault.vault-system.svc:8200")
+	yaml := generateVaultClusterSecretStoreYAML("http://vault-system-vault.vault-system.svc:8200")
 
-	if !strings.Contains(yaml, "server: http://vault.vault-system.svc:8200") {
+	if !strings.Contains(yaml, "server: http://vault-system-vault.vault-system.svc:8200") {
 		t.Errorf("expected in-cluster Vault address, got:\n%s", yaml)
 	}
 }

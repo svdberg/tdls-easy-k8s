@@ -90,6 +90,23 @@ if [ -z "$PRIVATE_IP" ]; then
 fi
 echo "[$(date)] Private IP: $PRIVATE_IP, Public IP: $PUBLIC_IP"
 
+# Configure Canal to use the private network interface for VXLAN overlay.
+# Without this, Flannel auto-detects via default route (public interface),
+# and VXLAN traffic gets blocked by the firewall which only allows it from
+# the private network CIDR.
+mkdir -p /var/lib/rancher/rke2/server/manifests
+cat <<EOF > /var/lib/rancher/rke2/server/manifests/rke2-canal-config.yaml
+apiVersion: helm.cattle.io/v1
+kind: HelmChartConfig
+metadata:
+  name: rke2-canal
+  namespace: kube-system
+spec:
+  valuesContent: |-
+    flannel:
+      iface: enp7s0
+EOF
+
 # Build TLS SANs
 if [ "$IS_FIRST_NODE" = "true" ]; then
   echo "[$(date)] Configuring as first control plane node..."
