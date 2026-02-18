@@ -61,7 +61,7 @@ func TestFullE2E(t *testing.T) {
 			if strings.Contains(line, "ingress_lb_ipv4") {
 				parts := strings.SplitN(line, "=", 2)
 				if len(parts) == 2 {
-					ingressLBIP = strings.TrimSpace(strings.Trim(parts[1], "\""))
+					ingressLBIP = strings.Trim(strings.TrimSpace(parts[1]), "\"")
 				}
 			}
 		}
