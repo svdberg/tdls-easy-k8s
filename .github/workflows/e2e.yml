@@ -1,0 +1,45 @@
+name: E2E Tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      location:
+        description: 'Hetzner location (nbg1, fsn1, hel1)'
+        default: 'nbg1'
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
+      GH_TOKEN: ${{ secrets.GH_TOKEN }}
+      E2E_LOCATION: ${{ inputs.location }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Install OpenTofu
+        uses: opentofu/setup-opentofu@v1
+
+      - name: Run E2E tests
+        run: go test -v -tags=e2e -timeout=25m ./e2e/
+
+      - name: Emergency cleanup
+        if: always()
+        run: |
+          go build -o bin/tdls-easy-k8s ./cmd/tdls-easy-k8s
+          # Find and destroy any e2e clusters that might be left over
+          for dir in ~/.tdls-k8s/clusters/e2e-*/; do
+            if [ -d "$dir" ]; then
+              cluster=$(basename "$dir")
+              echo "Cleaning up leftover cluster: $cluster"
+              bin/tdls-easy-k8s destroy --cluster "$cluster" --force --cleanup || true
+            fi
+          done
