@@ -305,9 +305,16 @@ spec:
 	// Git Push
 	// =========================================================================
 	t.Run("GitPush", func(t *testing.T) {
-		sshURL := fmt.Sprintf("git@github.com:%s.git", repoName)
+		// Use HTTPS with token auth (SSH keys not available on CI)
+		token := os.Getenv("GH_TOKEN")
+		var repoURL string
+		if token != "" {
+			repoURL = fmt.Sprintf("https://x-access-token:%s@github.com/%s.git", token, repoName)
+		} else {
+			repoURL = fmt.Sprintf("git@github.com:%s.git", repoName)
+		}
 		gitInit(t, gitopsDir)
-		gitCommitAndPush(t, gitopsDir, sshURL, "Add traefik, external-secrets, vault")
+		gitCommitAndPush(t, gitopsDir, repoURL, "Add traefik, external-secrets, vault")
 	})
 
 	if t.Failed() {
