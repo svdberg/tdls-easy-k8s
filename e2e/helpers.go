@@ -169,6 +169,8 @@ func deleteGitHubRepo(t *testing.T, name string) {
 func gitInit(t *testing.T, dir string) {
 	t.Helper()
 	run(t, dir, "git", "init")
+	run(t, dir, "git", "config", "user.email", "e2e@test.local")
+	run(t, dir, "git", "config", "user.name", "E2E Test")
 	run(t, dir, "git", "branch", "-M", "main")
 }
 
