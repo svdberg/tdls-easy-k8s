@@ -23,15 +23,17 @@ type ProviderConfig struct {
 	Region   string    `yaml:"region,omitempty"`   // For AWS
 	Location string    `yaml:"location,omitempty"` // For Hetzner (fsn1, nbg1, hel1, ash, hil)
 	VPC      VPCConfig `yaml:"vpc"`
+
 	// vSphere-specific fields
 	VCenter    string `yaml:"vcenter,omitempty"`
 	Datacenter string `yaml:"datacenter,omitempty"`
+
 	// On-prem provider fields (Proxmox, Harvester)
 	Node      string `yaml:"node,omitempty"`      // Proxmox node name (e.g. "pve")
-	Bridge    string `yaml:"bridge,omitempty"`     // Network bridge (default "vmbr0")
-	VlanTag   int    `yaml:"vlanTag,omitempty"`    // Optional VLAN tag
-	Datastore string `yaml:"datastore,omitempty"`  // Storage datastore (default "local-lvm")
-	VIP       string `yaml:"vip,omitempty"`        // kube-vip virtual IP for API endpoint
+	Bridge    string `yaml:"bridge,omitempty"`    // Network bridge (default "vmbr0")
+	VlanTag   int    `yaml:"vlanTag,omitempty"`   // Optional VLAN tag
+	Datastore string `yaml:"datastore,omitempty"` // Storage datastore (default "local-lvm")
+	VIP       string `yaml:"vip,omitempty"`       // kube-vip virtual IP for API endpoint
 }
 
 // VPCConfig contains VPC/network configuration
