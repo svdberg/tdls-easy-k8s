@@ -58,7 +58,7 @@ func TestClusterConfig_Validate_InvalidProviderType(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for invalid provider type")
 	}
-	if err.Error() != "provider type must be 'aws', 'vsphere', or 'hetzner'" {
+	if err.Error() != "provider type must be 'aws', 'vsphere', 'hetzner', or 'proxmox'" {
 		t.Errorf("unexpected error message: %v", err)
 	}
 }
@@ -92,6 +92,14 @@ func TestClusterConfig_Validate_VSphereProvider(t *testing.T) {
 	cfg.Provider.Type = "vsphere"
 	if err := cfg.Validate(); err != nil {
 		t.Errorf("expected vsphere provider to be valid, got: %v", err)
+	}
+}
+
+func TestClusterConfig_Validate_ProxmoxProvider(t *testing.T) {
+	cfg := validConfig()
+	cfg.Provider.Type = "proxmox"
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("expected proxmox provider to be valid, got: %v", err)
 	}
 }
 

@@ -22,6 +22,26 @@ func TestGetProvider_VSphere(t *testing.T) {
 	}
 }
 
+func TestGetProvider_Hetzner(t *testing.T) {
+	p, err := GetProvider("hetzner")
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if p.Name() != "hetzner" {
+		t.Errorf("expected provider name 'hetzner', got %q", p.Name())
+	}
+}
+
+func TestGetProvider_Proxmox(t *testing.T) {
+	p, err := GetProvider("proxmox")
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if p.Name() != "proxmox" {
+		t.Errorf("expected provider name 'proxmox', got %q", p.Name())
+	}
+}
+
 func TestGetProvider_Unsupported(t *testing.T) {
 	_, err := GetProvider("gcp")
 	if err == nil {

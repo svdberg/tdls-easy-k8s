@@ -68,6 +68,8 @@ func GetProvider(providerType string) (Provider, error) {
 		return NewVSphereProvider(), nil
 	case "hetzner":
 		return NewHetznerProvider(), nil
+	case "proxmox":
+		return NewProxmoxProvider(), nil
 	default:
 		return nil, ErrUnsupportedProvider
 	}

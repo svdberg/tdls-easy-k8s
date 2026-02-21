@@ -19,13 +19,19 @@ type ClusterConfig struct {
 
 // ProviderConfig contains cloud provider configuration
 type ProviderConfig struct {
-	Type     string    `yaml:"type"`               // aws, vsphere, hetzner
+	Type     string    `yaml:"type"`               // aws, vsphere, hetzner, proxmox
 	Region   string    `yaml:"region,omitempty"`   // For AWS
 	Location string    `yaml:"location,omitempty"` // For Hetzner (fsn1, nbg1, hel1, ash, hil)
 	VPC      VPCConfig `yaml:"vpc"`
-	// vSphere-specific fields can be added here
+	// vSphere-specific fields
 	VCenter    string `yaml:"vcenter,omitempty"`
 	Datacenter string `yaml:"datacenter,omitempty"`
+	// On-prem provider fields (Proxmox, Harvester)
+	Node      string `yaml:"node,omitempty"`      // Proxmox node name (e.g. "pve")
+	Bridge    string `yaml:"bridge,omitempty"`     // Network bridge (default "vmbr0")
+	VlanTag   int    `yaml:"vlanTag,omitempty"`    // Optional VLAN tag
+	Datastore string `yaml:"datastore,omitempty"`  // Storage datastore (default "local-lvm")
+	VIP       string `yaml:"vip,omitempty"`        // kube-vip virtual IP for API endpoint
 }
 
 // VPCConfig contains VPC/network configuration
@@ -94,8 +100,8 @@ func (c *ClusterConfig) Validate() error {
 		return &ConfigError{Message: "provider type is required"}
 	}
 
-	if c.Provider.Type != "aws" && c.Provider.Type != "vsphere" && c.Provider.Type != "hetzner" {
-		return &ConfigError{Message: "provider type must be 'aws', 'vsphere', or 'hetzner'"}
+	if c.Provider.Type != "aws" && c.Provider.Type != "vsphere" && c.Provider.Type != "hetzner" && c.Provider.Type != "proxmox" {
+		return &ConfigError{Message: "provider type must be 'aws', 'vsphere', 'hetzner', or 'proxmox'"}
 	}
 
 	if c.Nodes.ControlPlane.Count < 1 {

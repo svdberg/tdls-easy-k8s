@@ -1,0 +1,29 @@
+name: my-proxmox-cluster
+provider:
+  type: proxmox
+  node: pve                   # Proxmox node hostname
+  bridge: vmbr0               # Network bridge (default)
+  datastore: local-lvm        # Storage datastore (default)
+  vip: 192.168.1.200          # Free IP on network for kube-vip
+  # vlanTag: 100              # Optional VLAN tag
+
+kubernetes:
+  version: "1.30"
+  distribution: rke2
+
+nodes:
+  controlPlane:
+    count: 1
+  workers:
+    count: 2
+
+# Environment variables required:
+#   PROXMOX_VE_ENDPOINT=https://proxmox.local:8006
+#   PROXMOX_VE_API_TOKEN=terraform@pve!provider=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+#
+# Proxmox prerequisites:
+#   1. API token with VM.Allocate, VM.Config.*, VM.Monitor,
+#      Datastore.AllocateSpace, Sys.Modify permissions
+#   2. "Snippets" content type enabled on the "local" datastore
+#   3. DHCP server on the network
+#   4. One free IP address for kube-vip (the VIP above)
